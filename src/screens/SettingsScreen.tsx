@@ -115,6 +115,26 @@ export default function SettingsScreen() {
             subtitle="Edit your personal details"
             onPress={() => navigation.navigate('EditProfile')}
           />
+
+          {/* Show "Become a Host" option if user is not already a host */}
+          {user && !user.isHost && (
+            <SettingItem
+              icon="business"
+              title="Become a Host"
+              subtitle="Start hosting amazing events"
+              onPress={() => navigation.navigate('HostApplication')}
+            />
+          )}
+
+          {/* Show "Host Dashboard" if user is already a host */}
+          {user && user.isHost && (
+            <SettingItem
+              icon="storefront"
+              title="Host Dashboard"
+              subtitle="Manage your events and bookings"
+              onPress={() => navigation.navigate('HostDashboard')}
+            />
+          )}
           
           <SettingItem
             icon="shield-checkmark"

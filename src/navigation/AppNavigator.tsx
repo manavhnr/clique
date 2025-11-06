@@ -19,6 +19,9 @@ import BookingScreen from '../screens/BookingScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import ConnectionsScreen from '../screens/ConnectionsScreen';
+import HostApplicationScreen from '../screens/HostApplicationScreen';
+import HostDashboardScreen from '../screens/HostDashboardScreen';
+import CreateEventScreen from '../screens/CreateEventScreen';
 
 export type RootStackParamList = {
   Welcome: undefined;
@@ -31,6 +34,9 @@ export type RootStackParamList = {
   Settings: undefined;
   EditProfile: undefined;
   Connections: { tab?: 'followers' | 'following' };
+  HostApplication: undefined;
+  HostDashboard: undefined;
+  CreateEvent: { eventId?: string; mode?: 'create' | 'edit' };
 };
 
 export type MainTabParamList = {
@@ -157,10 +163,7 @@ const MainTabNavigator = React.memo(function MainTabNavigator() {
             name="EventDetails" 
             component={EventDetailsScreen}
             options={{ 
-              headerShown: true,
-              title: 'Event Details',
-              headerStyle: { backgroundColor: '#FFFFFF' },
-              headerTintColor: '#000000',
+              headerShown: false,
             }}
           />
           <RootStack.Screen 
@@ -201,6 +204,27 @@ const MainTabNavigator = React.memo(function MainTabNavigator() {
               title: 'Connections',
               headerStyle: { backgroundColor: '#FFFFFF' },
               headerTintColor: '#000000',
+            }}
+          />
+          <RootStack.Screen 
+            name="HostApplication" 
+            component={HostApplicationScreen}
+            options={{ 
+              headerShown: false,
+            }}
+          />
+          <RootStack.Screen 
+            name="HostDashboard" 
+            component={HostDashboardScreen}
+            options={{ 
+              headerShown: false,
+            }}
+          />
+          <RootStack.Screen 
+            name="CreateEvent" 
+            component={CreateEventScreen}
+            options={{ 
+              headerShown: false,
             }}
           />
         </>

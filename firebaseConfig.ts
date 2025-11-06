@@ -1,7 +1,7 @@
 // firebaseConfig.ts
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import { getAuth, Auth } from "firebase/auth";
-import { getFirestore, Firestore, connectFirestoreEmulator, enableNetwork, disableNetwork } from "firebase/firestore";
+import { initializeFirestore, Firestore, connectFirestoreEmulator, enableNetwork, disableNetwork } from "firebase/firestore";
 import { getStorage, FirebaseStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -16,8 +16,12 @@ const firebaseConfig = {
 // Initialize Firebase once
 const app: FirebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
+// ✅ React Native fix for Firestore
+export const db: Firestore = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+});
+
 export const auth: Auth = getAuth(app);
-export const db: Firestore = getFirestore(app);
 export const storage: FirebaseStorage = getStorage(app);
 
 // Helper functions for connection management

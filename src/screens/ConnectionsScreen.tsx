@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,104 +11,68 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '../../firebaseConfig';
+import { useAuth } from '../contexts/AuthContext';
 
 type ConnectionType = 'followers' | 'following';
 
-interface Connection {
+interface User {
   id: string;
   name: string;
-  username: string;
-  profileImage: string;
+  email: string;
+  phone: string;
   isHost: boolean;
-  isFollowing?: boolean;
-  mutualConnections?: number;
-  bio: string;
+  profileSetup: boolean;
+  bio?: string;
+  profileImage?: string;
 }
-
-// Mock data - in a real app, this would come from an API
-const connectionsData = {
-  followers: [
-    {
-      id: '1',
-      name: 'Arjun Sharma',
-      username: 'arjun_events',
-      profileImage: 'https://picsum.photos/150/150?random=1',
-      isHost: true,
-      mutualConnections: 5,
-      bio: '🎵 Music lover & Event organizer',
-    },
-    {
-      id: '2',
-      name: 'Priya Patel',
-      username: 'priya_foodie',
-      profileImage: 'https://picsum.photos/150/150?random=2',
-      isHost: false,
-      mutualConnections: 8,
-      bio: '🍕 Food enthusiast | Photographer',
-    },
-    {
-      id: '3',
-      name: 'Raj Kumar',
-      username: 'raj_techie',
-      profileImage: 'https://picsum.photos/150/150?random=3',
-      isHost: true,
-      mutualConnections: 12,
-      bio: '💻 Tech entrepreneur | Startup founder',
-    },
-    {
-      id: '4',
-      name: 'Sneha Reddy',
-      username: 'sneha_artist',
-      profileImage: 'https://picsum.photos/150/150?random=4',
-      isHost: false,
-      mutualConnections: 3,
-      bio: '🎨 Digital artist | Art teacher',
-    },
-  ],
-  following: [
-    {
-      id: '5',
-      name: 'Vikram Singh',
-      username: 'vikram_fitness',
-      profileImage: 'https://picsum.photos/150/150?random=5',
-      isHost: true,
-      isFollowing: true,
-      bio: '💪 Fitness coach | Marathon runner',
-    },
-    {
-      id: '6',
-      name: 'Maya Kapoor',
-      username: 'maya_dance',
-      profileImage: 'https://picsum.photos/150/150?random=6',
-      isHost: false,
-      isFollowing: true,
-      bio: '💃 Professional dancer | Choreographer',
-    },
-    {
-      id: '7',
-      name: 'Rohit Agarwal',
-      username: 'rohit_musician',
-      profileImage: 'https://picsum.photos/150/150?random=7',
-      isHost: true,
-      isFollowing: true,
-      bio: '🎸 Musician | Music producer',
-    },
-  ],
-};
 
 export default function ConnectionsScreen({ route }: { route: any }) {
   const navigation = useNavigation<any>();
+  const { user } = useAuth();
   const initialTab = route?.params?.tab || 'followers';
   
   const [activeTab, setActiveTab] = useState<ConnectionType>(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
+  const [followers, setFollowers] = useState<User[]>([]);
+  const [following, setFollowing] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const connections = connectionsData[activeTab];
+  useEffect(() => {
+    loadConnections();
+  }, []);
+
+  const loadConnections = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    try {
+      // In a real app, you would have a connections collection
+      // For now, we'll load other users as potential connections
+      const usersRef = collection(db, 'users');
+      const usersSnapshot = await getDocs(usersRef);
+      const allUsers = usersSnapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as User))
+        .filter(u => u.id !== user.id); // Exclude current user
+
+      // For demo purposes, split users into followers and following
+      const midpoint = Math.ceil(allUsers.length / 2);
+      setFollowers(allUsers.slice(0, midpoint));
+      setFollowing(allUsers.slice(midpoint));
+    } catch (error) {
+      console.error('Error loading connections:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const connections = activeTab === 'followers' ? followers : following;
   
   const filteredConnections = connections.filter(connection =>
     connection.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    connection.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    connection.bio.toLowerCase().includes(searchQuery.toLowerCase())
+    connection.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (connection.bio && connection.bio.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const handlePersonPress = (personId: string) => {
@@ -126,6 +90,16 @@ export default function ConnectionsScreen({ route }: { route: any }) {
     console.log('Remove follower:', personId);
   };
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading connections...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header with tabs */}
@@ -136,7 +110,7 @@ export default function ConnectionsScreen({ route }: { route: any }) {
             onPress={() => setActiveTab('followers')}
           >
             <Text style={[styles.tabText, activeTab === 'followers' && styles.activeTabText]}>
-              {connectionsData.followers.length} Followers
+              {followers.length} Followers
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -144,7 +118,7 @@ export default function ConnectionsScreen({ route }: { route: any }) {
             onPress={() => setActiveTab('following')}
           >
             <Text style={[styles.tabText, activeTab === 'following' && styles.activeTabText]}>
-              {connectionsData.following.length} Following
+              {following.length} Following
             </Text>
           </TouchableOpacity>
         </View>
@@ -166,95 +140,87 @@ export default function ConnectionsScreen({ route }: { route: any }) {
 
       {/* Connections List */}
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {filteredConnections.map((connection) => (
-          <TouchableOpacity
-            key={connection.id}
-            style={styles.connectionItem}
-            onPress={() => handlePersonPress(connection.id)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.connectionLeft}>
-              <View style={styles.imageContainer}>
-                <Image 
-                  source={{ uri: connection.profileImage }} 
-                  style={styles.profileImage} 
-                />
-                <View style={[
-                  styles.statusBadge, 
-                  connection.isHost ? styles.hostBadge : styles.memberBadge
-                ]}>
-                  <Ionicons 
-                    name={connection.isHost ? "star" : "checkmark"} 
-                    size={8} 
-                    color="#FFFFFF" 
-                  />
-                </View>
-              </View>
-
-              <View style={styles.connectionInfo}>
-                <Text style={styles.connectionName}>{connection.name}</Text>
-                <Text style={styles.connectionUsername}>@{connection.username}</Text>
-                <Text style={styles.connectionBio} numberOfLines={1}>
-                  {connection.bio}
-                </Text>
-                {connection.mutualConnections !== undefined && (
-                  <View style={styles.mutualContainer}>
-                    <Ionicons name="people" size={12} color="#6B7280" />
-                    <Text style={styles.mutualText}>
-                      {connection.mutualConnections} mutual connections
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </View>
-
-            <View style={styles.connectionActions}>
-              {activeTab === 'followers' ? (
-                <View style={styles.actionButtons}>
-                  <TouchableOpacity 
-                    style={styles.removeButton}
-                    onPress={() => handleRemoveFollower(connection.id)}
-                  >
-                    <Text style={styles.removeButtonText}>Remove</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.messageButton}>
-                    <Ionicons name="chatbubble" size={16} color="#6B7280" />
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View style={styles.actionButtons}>
-                  <TouchableOpacity 
-                    style={[styles.followButton, connection.isFollowing && styles.followingButton]}
-                    onPress={() => handleFollowToggle(connection.id)}
-                  >
-                    <Text style={[styles.followButtonText, connection.isFollowing && styles.followingButtonText]}>
-                      {connection.isFollowing ? 'Following' : 'Follow'}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.messageButton}>
-                    <Ionicons name="chatbubble" size={16} color="#6B7280" />
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          </TouchableOpacity>
-        ))}
-
-        {filteredConnections.length === 0 && (
+        {filteredConnections.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="people" size={48} color="#D1D5DB" />
+            <Ionicons name="people-outline" size={48} color="#D1D5DB" />
             <Text style={styles.emptyStateTitle}>
-              {searchQuery ? 'No connections found' : `No ${activeTab}`}
+              {searchQuery ? 'No matching connections' : `No ${activeTab} yet`}
             </Text>
             <Text style={styles.emptyStateSubtitle}>
               {searchQuery 
-                ? 'Try adjusting your search' 
-                : activeTab === 'followers' 
-                  ? 'Share your profile to get followers'
-                  : 'Discover people to follow in the Discover tab'
+                ? 'Try adjusting your search'
+                : `Discover and connect with other users`
               }
             </Text>
           </View>
+        ) : (
+          filteredConnections.map((connection) => (
+            <TouchableOpacity
+              key={connection.id}
+              style={styles.connectionCard}
+              onPress={() => handlePersonPress(connection.id)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.connectionHeader}>
+                <View style={styles.connectionImageContainer}>
+                  <Image 
+                    source={{ 
+                      uri: connection.profileImage || 'https://picsum.photos/150/150?random=' + connection.id 
+                    }} 
+                    style={styles.connectionImage} 
+                  />
+                  {connection.isHost && (
+                    <View style={styles.hostBadge}>
+                      <Ionicons name="star" size={10} color="#FFFFFF" />
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.connectionInfo}>
+                  <Text style={styles.connectionName}>{connection.name}</Text>
+                  <Text style={styles.connectionEmail}>{connection.email}</Text>
+                  {connection.bio && (
+                    <Text style={styles.connectionBio} numberOfLines={2}>
+                      {connection.bio}
+                    </Text>
+                  )}
+                  {connection.isHost && (
+                    <View style={styles.hostTag}>
+                      <Text style={styles.hostTagText}>Host</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+
+              <View style={styles.connectionActions}>
+                {activeTab === 'followers' ? (
+                  <View style={styles.actionButtons}>
+                    <TouchableOpacity 
+                      style={styles.removeButton}
+                      onPress={() => handleRemoveFollower(connection.id)}
+                    >
+                      <Text style={styles.removeButtonText}>Remove</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.messageButton}>
+                      <Ionicons name="chatbubble" size={16} color="#6B7280" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.actionButtons}>
+                    <TouchableOpacity 
+                      style={styles.followButton}
+                      onPress={() => handleFollowToggle(connection.id)}
+                    >
+                      <Text style={styles.followButtonText}>Following</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.messageButton}>
+                      <Ionicons name="chatbubble" size={16} color="#6B7280" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
+          ))
         )}
       </ScrollView>
     </SafeAreaView>
@@ -266,44 +232,47 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-
-  // Header
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6B7280',
+  },
   header: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 16,
   },
   tabContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 4,
   },
   tab: {
     flex: 1,
-    paddingVertical: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
     alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
   },
   activeTab: {
-    borderBottomColor: '#111827',
+    backgroundColor: '#8B5CF6',
   },
   tabText: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
     color: '#6B7280',
   },
   activeTabText: {
-    color: '#111827',
-    fontWeight: '600',
+    color: '#FFFFFF',
   },
-
-  // Search
   searchContainer: {
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    marginBottom: 16,
   },
   searchBar: {
     flexDirection: 'row',
@@ -311,7 +280,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   searchInput: {
     flex: 1,
@@ -319,51 +288,52 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#111827',
   },
-
-  // Connections List
   scrollView: {
     flex: 1,
-  },
-  connectionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
     paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F9FAFB',
   },
-  connectionLeft: {
+  connectionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 3.84,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+  },
+  connectionHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
-  imageContainer: {
+  connectionImageContainer: {
     position: 'relative',
     marginRight: 12,
   },
-  profileImage: {
+  connectionImage: {
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#F3F4F6',
   },
-  statusBadge: {
+  hostBadge: {
     position: 'absolute',
     bottom: -2,
     right: -2,
+    backgroundColor: '#F59E0B',
+    borderRadius: 8,
     width: 16,
     height: 16,
-    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
     borderWidth: 2,
     borderColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  hostBadge: {
-    backgroundColor: '#F59E0B',
-  },
-  memberBadge: {
-    backgroundColor: '#10B981',
   },
   connectionInfo: {
     flex: 1,
@@ -374,77 +344,67 @@ const styles = StyleSheet.create({
     color: '#111827',
     marginBottom: 2,
   },
-  connectionUsername: {
+  connectionEmail: {
     fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 2,
-  },
-  connectionBio: {
-    fontSize: 13,
     color: '#6B7280',
     marginBottom: 4,
   },
-  mutualContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  mutualText: {
+  connectionBio: {
     fontSize: 12,
-    color: '#6B7280',
-    marginLeft: 4,
+    color: '#9CA3AF',
+    lineHeight: 16,
+    marginBottom: 8,
   },
-
-  // Actions
+  hostTag: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  hostTagText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#D97706',
+  },
   connectionActions: {
-    marginLeft: 12,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
   },
   actionButtons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
   followButton: {
-    backgroundColor: '#111827',
-    borderRadius: 8,
-    paddingVertical: 6,
+    backgroundColor: '#8B5CF6',
     paddingHorizontal: 16,
-  },
-  followingButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 8,
   },
   followButtonText: {
+    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  followingButtonText: {
-    color: '#374151',
   },
   removeButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: '#EF4444',
-    borderRadius: 8,
-    paddingVertical: 6,
+    backgroundColor: '#EF4444',
     paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 8,
   },
   removeButtonText: {
+    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '600',
-    color: '#EF4444',
   },
   messageButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    padding: 8,
     backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: 20,
   },
-
-  // Empty State
   emptyState: {
     alignItems: 'center',
     paddingVertical: 60,
@@ -452,15 +412,15 @@ const styles = StyleSheet.create({
   },
   emptyStateTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#111827',
+    fontWeight: '600',
+    color: '#374151',
     marginTop: 16,
     marginBottom: 8,
+    textAlign: 'center',
   },
   emptyStateSubtitle: {
     fontSize: 14,
     color: '#6B7280',
     textAlign: 'center',
-    lineHeight: 20,
   },
 });

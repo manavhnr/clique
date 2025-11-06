@@ -8,9 +8,12 @@ import {
   SafeAreaView,
   Image,
   Dimensions,
+  Modal,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
+import QRCode from 'react-native-qrcode-svg';
 
 const { width } = Dimensions.get('window');
 
@@ -83,6 +86,45 @@ const mockLiveEvents = [
 export default function DashboardScreen() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('live');
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<any>(null);
+  const [pendingEvents, setPendingEvents] = useState(mockPendingEvents);
+
+  const handleShowQR = (event: any) => {
+    setSelectedEvent(event);
+    setShowQRModal(true);
+  };
+
+  const handleCancelRequest = (eventId: string) => {
+    Alert.alert(
+      'Cancel Request',
+      'Are you sure you want to cancel this event request?',
+      [
+        {
+          text: 'No',
+          style: 'cancel',
+        },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: () => {
+            setPendingEvents(pendingEvents.filter(event => event.id !== eventId));
+          },
+        },
+      ]
+    );
+  };
+
+  const generateQRData = (event: any) => {
+    return JSON.stringify({
+      eventId: event.id,
+      eventTitle: event.title,
+      qrCode: event.qrCode,
+      userId: user?.id,
+      userName: user?.name || user?.username,
+      timestamp: Date.now(),
+    });
+  };
 
   const renderTabButton = (tabKey: string, label: string, count: number) => (
     <TouchableOpacity
@@ -161,7 +203,10 @@ export default function DashboardScreen() {
           </View>
         </View>
         <Text style={styles.requestText}>Request sent on {event.requestDate}</Text>
-        <TouchableOpacity style={styles.cancelButton}>
+        <TouchableOpacity 
+          style={styles.cancelButton}
+          onPress={() => handleCancelRequest(event.id)}
+        >
           <Text style={styles.cancelButtonText}>Cancel Request</Text>
         </TouchableOpacity>
       </View>
@@ -190,7 +235,10 @@ export default function DashboardScreen() {
           </View>
         </View>
         <View style={styles.actionButtons}>
-          <TouchableOpacity style={styles.qrButton}>
+          <TouchableOpacity 
+            style={styles.qrButton}
+            onPress={() => handleShowQR(event)}
+          >
             <Ionicons name="qr-code" size={16} color="#FFFFFF" />
             <Text style={styles.qrButtonText}>Show QR</Text>
           </TouchableOpacity>
@@ -216,8 +264,8 @@ export default function DashboardScreen() {
           </View>
         );
       case 'pending':
-        return mockPendingEvents.length > 0 ? (
-          mockPendingEvents.map(renderPendingEventCard)
+        return pendingEvents.length > 0 ? (
+          pendingEvents.map(renderPendingEventCard)
         ) : (
           <View style={styles.emptyState}>
             <Ionicons name="time-outline" size={48} color="#9CA3AF" />
@@ -251,7 +299,7 @@ export default function DashboardScreen() {
       {/* Tabs */}
       <View style={styles.tabContainer}>
         {renderTabButton('live', 'Live', mockLiveEvents.length)}
-        {renderTabButton('pending', 'Pending', mockPendingEvents.length)}
+        {renderTabButton('pending', 'Pending', pendingEvents.length)}
         {renderTabButton('past', 'Past', mockPastEvents.length)}
       </View>
 
@@ -263,6 +311,57 @@ export default function DashboardScreen() {
       >
         {getTabContent()}
       </ScrollView>
+
+      {/* QR Code Modal */}
+      <Modal
+        visible={showQRModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowQRModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Event QR Code</Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowQRModal(false)}
+              >
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            
+            {selectedEvent && (
+              <View style={styles.qrContainer}>
+                <Text style={styles.eventNameText}>{selectedEvent.title}</Text>
+                <Text style={styles.eventDateText}>{selectedEvent.date} • {selectedEvent.time}</Text>
+                
+                <View style={styles.qrCodeWrapper}>
+                  <QRCode
+                    value={generateQRData(selectedEvent)}
+                    size={200}
+                    color="#111827"
+                    backgroundColor="#FFFFFF"
+                  />
+                </View>
+                
+                <Text style={styles.qrInstructions}>
+                  Show this QR code at the event entrance for entry
+                </Text>
+                
+                <View style={styles.qrInfo}>
+                  <Text style={styles.qrLabel}>QR Code:</Text>
+                  <Text style={styles.qrValue}>{selectedEvent.qrCode}</Text>
+                </View>
+                
+                <Text style={styles.validityText}>
+                  Valid for entry on event day only
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -488,5 +587,95 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
     textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    margin: 20,
+    maxWidth: 350,
+    width: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#111827',
+  },
+  closeButton: {
+    padding: 8,
+  },
+  qrContainer: {
+    alignItems: 'center',
+  },
+  eventNameText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  eventDateText: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  qrCodeWrapper: {
+    backgroundColor: '#FFFFFF',
+    padding: 20,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+    marginBottom: 20,
+  },
+  qrInstructions: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  qrInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  qrLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  qrValue: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#6366F1',
+  },
+  validityText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });

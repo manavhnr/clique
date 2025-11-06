@@ -49,6 +49,10 @@ interface UserProfile {
   phoneNumber?: string;
   socialActivityLevel?: 'rarely' | 'occasionally' | 'frequently' | 'very_frequently';
   isHost: boolean;
+  hostApplicationStatus?: 'pending' | 'approved' | 'rejected' | null;
+  hostApplicationDate?: string;
+  hostStatus?: 'pending' | 'approved' | 'rejected' | null;
+  hostVerificationData?: any;
   isProfileComplete: boolean;
   createdAt: string;
 }
@@ -67,6 +71,7 @@ interface AuthContextType {
   completeRegistration: (data: CompleteRegistrationData, phoneNumber: string) => Promise<{ success: boolean; message: string }>;
   logout: () => void;
   becomeHost: () => Promise<{ success: boolean; message: string }>;
+  updateUserProfile: (updates: Partial<UserProfile>) => Promise<{ success: boolean; message: string }>;
   // Legacy methods for backward compatibility
   sendOTP: (phoneNumber: string) => Promise<{ success: boolean; message: string }>;
   verifyOTP: (phoneNumber: string, otp: string) => Promise<{ success: boolean; message: string }>;
@@ -363,18 +368,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, message: 'User not logged in' };
       }
 
+      // Create host application instead of making user a host immediately
+      await setDoc(doc(db, 'hostApplications', auth.currentUser.uid), {
+        userId: auth.currentUser.uid,
+        userEmail: auth.currentUser.email,
+        userName: auth.currentUser.displayName || user?.name || 'Unknown',
+        applicationDate: new Date().toISOString(),
+        status: 'pending', // pending, approved, rejected
+        applicationData: {
+          reason: 'User applied to become a host', // Can be expanded with more details
+          experience: '', // Can be added later
+          eventTypes: [], // Can be added later
+        }
+      });
+
+      // Update user profile to show application is pending
       await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-        isHost: true,
+        hostApplicationStatus: 'pending',
+        hostApplicationDate: new Date().toISOString(),
       });
 
       return {
         success: true,
-        message: 'You are now a host! You can create and manage events.'
+        message: 'Host application submitted! We will review your application and get back to you within 2-3 business days.'
       };
     } catch (error: any) {
-      console.error('Become host error:', error);
+      console.error('Host application error:', error);
       
-      let message = 'Failed to become host. Please try again.';
+      let message = 'Failed to submit host application. Please try again.';
+      
+      if (error.code === 'unavailable' || error.message?.includes('offline')) {
+        message = 'Network error. Please check your connection and try again.';
+      }
+      
+      return {
+        success: false,
+        message
+      };
+    }
+  };
+
+  const updateUserProfile = async (updates: Partial<UserProfile>): Promise<{ success: boolean; message: string }> => {
+    try {
+      if (!auth.currentUser) {
+        return { success: false, message: 'User not logged in' };
+      }
+
+      // Update user profile in Firestore
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), updates);
+
+      // Update local user state
+      if (user) {
+        setUser({
+          ...user,
+          ...updates,
+        } as AuthUser);
+      }
+
+      return {
+        success: true,
+        message: 'Profile updated successfully'
+      };
+    } catch (error: any) {
+      console.error('Update profile error:', error);
+      
+      let message = 'Failed to update profile. Please try again.';
       
       if (error.code === 'unavailable' || error.message?.includes('offline')) {
         message = 'Network error. Please check your connection and try again.';
@@ -406,6 +464,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       completeRegistration,
       logout,
       becomeHost,
+      updateUserProfile,
       // Legacy methods for backward compatibility
       sendOTP,
       verifyOTP

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,198 +7,234 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Dimensions,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import type { StackNavigationProp } from '@react-navigation/stack';
+import type { RootStackParamList } from '../navigation/AppNavigator';
+import { eventsService, EventData } from '../services/eventsService';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
-// Sample event data - in a real app, this would be fetched from an API based on eventId
-const getEventDetails = (eventId: string) => {
-  const events = {
-    '1': {
-      id: '1',
-      title: 'Summer Music Festival',
-      date: 'July 25, 2025',
-      time: '6:00 PM',
-      location: 'Phoenix Mall, Mumbai',
-      fullAddress: 'Phoenix Mall, Kurla West, Mumbai, Maharashtra 400070',
-      price: 299,
-      category: 'Music',
-      icon: 'musical-notes',
-      color: '#8B5CF6',
-      distance: '2.1 km',
-      attendees: 156,
-      rating: 4.8,
-      description: 'Join us for an amazing evening of live music featuring top artists from across the country. Experience the magic of live performances in an open-air venue with food stalls, merchandise booths, and a vibrant atmosphere.',
-      highlights: [
-        'Live performances by 8 renowned artists',
-        'Food and beverage stalls',
-        'Merchandise and photo booths',
-        'Free parking available',
-        'Age restriction: 16+ only'
-      ],
-      organizer: 'Mumbai Music Events',
-      tags: ['Music', 'Live Performance', 'Outdoor', 'Family Friendly'],
-    },
-    '2': {
-      id: '2',
-      title: 'Tech Conference 2025',
-      date: 'August 15, 2025',
-      time: '9:00 AM',
-      location: 'World Trade Center, Bangalore',
-      fullAddress: 'World Trade Center, Brigade Gateway Campus, Rajajinagar, Bangalore 560055',
-      price: 599,
-      category: 'Technology',
-      icon: 'desktop',
-      color: '#3B82F6',
-      distance: '5.3 km',
-      attendees: 342,
-      rating: 4.9,
-      description: 'Connect with industry leaders and learn about the latest technology trends. This comprehensive conference features keynote speakers, panel discussions, networking sessions, and hands-on workshops.',
-      highlights: [
-        'Keynote by tech industry leaders',
-        'Interactive workshops and demos',
-        'Networking lunch included',
-        'Conference materials provided',
-        'Certificate of participation'
-      ],
-      organizer: 'Tech Events India',
-      tags: ['Technology', 'Networking', 'Professional', 'Learning'],
-    },
-    // Add more events as needed...
+interface EventDetailsProps {
+  route: {
+    params: {
+      eventId: string;
+    };
   };
-  
-  return events[eventId as keyof typeof events] || events['1'];
-};
+}
 
 export default function EventDetailsScreen() {
-  const navigation = useNavigation<any>();
-  const route = useRoute<any>();
-  const { eventId } = route.params || { eventId: '1' };
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const route = useRoute();
+  const { eventId } = route.params as { eventId: string };
   
-  const event = getEventDetails(eventId);
+  const [selectedTicket, setSelectedTicket] = useState('regular');
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [event, setEvent] = useState<EventData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadEventDetails();
+  }, [eventId]);
+
+  const loadEventDetails = async () => {
+    try {
+      setIsLoading(true);
+      const eventData = await eventsService.getEventById(eventId);
+      setEvent(eventData);
+    } catch (error) {
+      console.error('Error loading event details:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleBookNow = () => {
-    navigation.navigate('Booking', { eventId });
+    if (event) {
+      navigation.navigate('Booking', { eventId: event.id });
+    }
   };
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#6366F1" />
+          <Text style={styles.loadingText}>Loading event details...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!event) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+          <Text style={styles.errorTitle}>Event Not Found</Text>
+          <Text style={styles.errorMessage}>The event you're looking for could not be found.</Text>
+          <TouchableOpacity style={styles.backToEventsButton} onPress={() => navigation.goBack()}>
+            <Text style={styles.backToEventsText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.shareButton}>
+          <Ionicons name="share-outline" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Event Header */}
-        <View style={styles.eventHeader}>
-          <View style={[styles.eventIconContainer, { backgroundColor: event.color }]}>
-            <Ionicons name={event.icon as any} size={48} color="#FFFFFF" />
-          </View>
-          
-          <View style={styles.eventHeaderInfo}>
-            <Text style={styles.eventTitle}>{event.title}</Text>
-            <Text style={styles.eventCategory}>{event.category}</Text>
-            
-            <View style={styles.ratingContainer}>
-              <Ionicons name="star" size={16} color="#F59E0B" />
-              <Text style={styles.ratingText}>{event.rating}</Text>
-              <Text style={styles.attendeesText}>({event.attendees} going)</Text>
-            </View>
+        {/* Event Images Carousel */}
+        <View style={styles.imageContainer}>
+          <Image source={{ uri: event.images[currentImageIndex] || 'https://picsum.photos/400/600?random=1' }} style={styles.eventImage} />
+          <View style={styles.imageIndicators}>
+            {event.images.map((_, index) => (
+              <TouchableOpacity
+                key={index}
+                style={[styles.indicator, index === currentImageIndex && styles.activeIndicator]}
+                onPress={() => setCurrentImageIndex(index)}
+              />
+            ))}
           </View>
         </View>
 
-        {/* Event Details */}
-        <View style={styles.detailsContainer}>
-          <View style={styles.detailSection}>
-            <Text style={styles.sectionTitle}>Event Details</Text>
-            
-            <View style={styles.detailItem}>
-              <Ionicons name="calendar" size={20} color="#6366F1" />
-              <View style={styles.detailText}>
-                <Text style={styles.detailLabel}>Date</Text>
-                <Text style={styles.detailValue}>{event.date}</Text>
+        {/* Event Info */}
+        <View style={styles.contentContainer}>
+          {/* Title & Host */}
+          <View style={styles.titleSection}>
+            <Text style={styles.eventTitle}>{event.title}</Text>
+            <View style={styles.hostInfo}>
+              <Image source={{ uri: event.host.avatar || 'https://picsum.photos/100/100?random=21' }} style={styles.hostAvatar} />
+              <View style={styles.hostDetails}>
+                <View style={styles.hostNameContainer}>
+                  <Text style={styles.hostName}>{event.host.name}</Text>
+                  {event.host.isVerified && (
+                    <Ionicons name="checkmark-circle" size={16} color="#6366F1" style={styles.verifiedIcon} />
+                  )}
+                </View>
+                <Text style={styles.hostUsername}>@{event.host.username || 'host'}</Text>
+                <View style={styles.hostStats}>
+                  <View style={styles.hostStat}>
+                    <Ionicons name="star" size={12} color="#F59E0B" />
+                    <Text style={styles.hostStatText}>{event.host.rating || 4.5}</Text>
+                  </View>
+                  <Text style={styles.hostStatSeparator}>•</Text>
+                  <Text style={styles.hostStatText}>{event.host.eventsHosted || 0} events</Text>
+                </View>
               </View>
+              <TouchableOpacity style={styles.followButton}>
+                <Text style={styles.followButtonText}>Follow</Text>
+              </TouchableOpacity>
             </View>
+          </View>
 
-            <View style={styles.detailItem}>
-              <Ionicons name="time" size={20} color="#6366F1" />
-              <View style={styles.detailText}>
-                <Text style={styles.detailLabel}>Time</Text>
-                <Text style={styles.detailValue}>{event.time}</Text>
-              </View>
+          {/* Date, Time & Location */}
+          <View style={styles.detailsSection}>
+            <View style={styles.detailRow}>
+              <Ionicons name="calendar-outline" size={20} color="#6B7280" />
+              <Text style={styles.detailText}>{event.date}</Text>
             </View>
-
-            <View style={styles.detailItem}>
-              <Ionicons name="location" size={20} color="#6366F1" />
-              <View style={styles.detailText}>
-                <Text style={styles.detailLabel}>Location</Text>
-                <Text style={styles.detailValue}>{event.location}</Text>
-                <Text style={styles.detailSubValue}>{event.fullAddress}</Text>
-              </View>
+            <View style={styles.detailRow}>
+              <Ionicons name="time-outline" size={20} color="#6B7280" />
+              <Text style={styles.detailText}>{event.time}</Text>
             </View>
-
-            <View style={styles.detailItem}>
-              <Ionicons name="navigate" size={20} color="#6366F1" />
-              <View style={styles.detailText}>
-                <Text style={styles.detailLabel}>Distance</Text>
-                <Text style={styles.detailValue}>{event.distance} away</Text>
+            <View style={styles.detailRow}>
+              <Ionicons name="location-outline" size={20} color="#6B7280" />
+              <View style={styles.locationInfo}>
+                <Text style={styles.detailText}>{event.location.name}</Text>
+                <Text style={styles.locationAddress}>{event.location.address}</Text>
               </View>
             </View>
           </View>
 
           {/* Description */}
-          <View style={styles.detailSection}>
+          <View style={styles.descriptionSection}>
             <Text style={styles.sectionTitle}>About This Event</Text>
             <Text style={styles.description}>{event.description}</Text>
           </View>
 
-          {/* Highlights */}
-          <View style={styles.detailSection}>
-            <Text style={styles.sectionTitle}>Event Highlights</Text>
-            {event.highlights.map((highlight, index) => (
-              <View key={index} style={styles.highlightItem}>
-                <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-                <Text style={styles.highlightText}>{highlight}</Text>
+          {/* Amenities */}
+          {event.amenities && event.amenities.length > 0 && (
+            <View style={styles.amenitiesSection}>
+              <Text style={styles.sectionTitle}>What's Included</Text>
+              <View style={styles.amenitiesGrid}>
+                {event.amenities.map((amenity, index) => (
+                  <View key={index} style={styles.amenityItem}>
+                    <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                    <Text style={styles.amenityText}>{amenity}</Text>
+                  </View>
+                ))}
               </View>
+            </View>
+          )}
+
+          {/* Ticket Selection */}
+          <View style={styles.ticketSection}>
+            <Text style={styles.sectionTitle}>Select Ticket</Text>
+            {Object.entries(event.pricing).map(([key, ticket]) => (
+              <TouchableOpacity
+                key={key}
+                style={[styles.ticketOption, selectedTicket === key && styles.selectedTicket]}
+                onPress={() => setSelectedTicket(key)}
+              >
+                <View style={styles.ticketInfo}>
+                  <Text style={styles.ticketLabel}>{ticket.label}</Text>
+                  <Text style={styles.ticketPrice}>₹{ticket.price}</Text>
+                </View>
+                <View style={[styles.ticketRadio, selectedTicket === key && styles.selectedRadio]}>
+                  {selectedTicket === key && <View style={styles.radioInner} />}
+                </View>
+              </TouchableOpacity>
             ))}
           </View>
 
-          {/* Tags */}
-          <View style={styles.detailSection}>
-            <Text style={styles.sectionTitle}>Tags</Text>
-            <View style={styles.tagsContainer}>
-              {event.tags.map((tag, index) => (
-                <View key={index} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-
-          {/* Organizer */}
-          <View style={styles.detailSection}>
-            <Text style={styles.sectionTitle}>Organizer</Text>
-            <View style={styles.organizerContainer}>
-              <View style={styles.organizerIcon}>
-                <Ionicons name="business" size={20} color="#6366F1" />
+          {/* Event Rules */}
+          <View style={styles.rulesSection}>
+            <Text style={styles.sectionTitle}>Event Rules</Text>
+            {event.ageRestriction && (
+              <View style={styles.ruleItem}>
+                <Text style={styles.ruleLabel}>Age Restriction:</Text>
+                <Text style={styles.ruleValue}>{event.ageRestriction}</Text>
               </View>
-              <Text style={styles.organizerName}>{event.organizer}</Text>
+            )}
+            {event.dressCode && (
+              <View style={styles.ruleItem}>
+                <Text style={styles.ruleLabel}>Dress Code:</Text>
+                <Text style={styles.ruleValue}>{event.dressCode}</Text>
+              </View>
+            )}
+            <View style={styles.ruleItem}>
+              <Text style={styles.ruleLabel}>Capacity:</Text>
+              <Text style={styles.ruleValue}>{event.capacity.total - event.capacity.booked} spots remaining</Text>
             </View>
           </View>
         </View>
       </ScrollView>
 
-      {/* Bottom Booking Section */}
-      <View style={styles.bookingContainer}>
-        <View style={styles.priceContainer}>
+      {/* Bottom Booking Bar */}
+      <View style={styles.bookingBar}>
+        <View style={styles.priceInfo}>
           <Text style={styles.priceLabel}>Starting from</Text>
-          <Text style={styles.priceValue}>₹{event.price}</Text>
+          <Text style={styles.price}>₹{event.pricing[selectedTicket as keyof typeof event.pricing]?.price || 0}</Text>
         </View>
-        
-        <TouchableOpacity
-          style={styles.bookButton}
-          onPress={handleBookNow}
-          activeOpacity={0.8}
-        >
+        <TouchableOpacity style={styles.bookButton} onPress={handleBookNow}>
           <Text style={styles.bookButtonText}>Book Now</Text>
-          <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -210,139 +246,270 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
+  header: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    zIndex: 10,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  shareButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   scrollView: {
     flex: 1,
   },
-  eventHeader: {
+  imageContainer: {
+    height: height * 0.4,
+    position: 'relative',
+  },
+  eventImage: {
+    width: width,
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  imageIndicators: {
+    position: 'absolute',
+    bottom: 20,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
-    padding: 20,
-    alignItems: 'center',
-  },
-  eventIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
     justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
+    gap: 8,
   },
-  eventHeaderInfo: {
+  indicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  activeIndicator: {
+    backgroundColor: '#FFFFFF',
+  },
+  contentContainer: {
     flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    marginTop: -24,
+    paddingTop: 24,
+    paddingHorizontal: 20,
+  },
+  titleSection: {
+    marginBottom: 24,
   },
   eventTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#111827',
-    marginBottom: 4,
+    marginBottom: 16,
   },
-  eventCategory: {
-    fontSize: 16,
-    color: '#6B7280',
-    marginBottom: 8,
-  },
-  ratingContainer: {
+  hostInfo: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  ratingText: {
-    fontSize: 14,
-    color: '#111827',
-    fontWeight: '600',
-    marginLeft: 4,
-    marginRight: 8,
+  hostAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
   },
-  attendeesText: {
+  hostDetails: {
+    flex: 1,
+  },
+  hostNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  hostName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginRight: 4,
+  },
+  verifiedIcon: {
+    marginLeft: 2,
+  },
+  hostUsername: {
     fontSize: 14,
     color: '#6B7280',
+    marginTop: 2,
   },
-  detailsContainer: {
-    paddingHorizontal: 20,
+  hostStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
   },
-  detailSection: {
+  hostStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  hostStatText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginLeft: 4,
+  },
+  hostStatSeparator: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginHorizontal: 8,
+  },
+  followButton: {
+    backgroundColor: '#6366F1',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  followButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  detailsSection: {
+    marginBottom: 24,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  detailText: {
+    fontSize: 16,
+    color: '#374151',
+    marginLeft: 12,
+    flex: 1,
+  },
+  locationInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  locationAddress: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  descriptionSection: {
     marginBottom: 24,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: '#111827',
-    marginBottom: 16,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    marginBottom: 16,
-    alignItems: 'flex-start',
-  },
-  detailText: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  detailLabel: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 2,
-  },
-  detailValue: {
-    fontSize: 16,
-    color: '#111827',
-    fontWeight: '500',
-  },
-  detailSubValue: {
-    fontSize: 14,
-    color: '#9CA3AF',
-    marginTop: 2,
+    marginBottom: 12,
   },
   description: {
     fontSize: 16,
     color: '#374151',
     lineHeight: 24,
   },
-  highlightItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 8,
+  amenitiesSection: {
+    marginBottom: 24,
   },
-  highlightText: {
-    fontSize: 14,
-    color: '#374151',
-    marginLeft: 8,
-    flex: 1,
-  },
-  tagsContainer: {
+  amenitiesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: 12,
   },
-  tag: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  tagText: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  organizerContainer: {
+  amenityItem: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  organizerIcon: {
-    width: 40,
-    height: 40,
     backgroundColor: '#F3F4F6',
-    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  amenityText: {
+    fontSize: 14,
+    color: '#374151',
+    marginLeft: 6,
+  },
+  ticketSection: {
+    marginBottom: 24,
+  },
+  ticketOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    marginBottom: 12,
+  },
+  selectedTicket: {
+    borderColor: '#6366F1',
+    backgroundColor: '#F8FAFF',
+  },
+  ticketInfo: {
+    flex: 1,
+  },
+  ticketLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  ticketPrice: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#6366F1',
+    marginTop: 4,
+  },
+  ticketRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
-  organizerName: {
+  selectedRadio: {
+    borderColor: '#6366F1',
+  },
+  radioInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#6366F1',
+  },
+  rulesSection: {
+    marginBottom: 100,
+  },
+  ruleItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  ruleLabel: {
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  ruleValue: {
     fontSize: 16,
     color: '#111827',
     fontWeight: '500',
   },
-  bookingContainer: {
+  bookingBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -350,40 +517,71 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: -2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
+    paddingBottom: 34,
   },
-  priceContainer: {
+  priceInfo: {
     flex: 1,
   },
   priceLabel: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#6B7280',
-    marginBottom: 2,
   },
-  priceValue: {
+  price: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#111827',
   },
   bookButton: {
     backgroundColor: '#6366F1',
+    paddingHorizontal: 32,
+    paddingVertical: 16,
     borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
+    marginLeft: 16,
   },
   bookButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
-    marginRight: 8,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginTop: 16,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  backToEventsButton: {
+    backgroundColor: '#6366F1',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  backToEventsText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

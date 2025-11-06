@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -127,6 +127,11 @@ export default function AccountScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const { user, logout, becomeHost } = useAuth();
   const [activeTab, setActiveTab] = useState('posts');
+  
+  // Mock data for followers and following - in a real app this would come from API
+  const followers = [1, 2, 3, 4, 5, 6, 7]; // 7 followers
+  const following = [1, 2, 3, 4, 5]; // 5 following
+  const totalSocials = followers.length + following.length;
 
   const handleLogout = () => {
     Alert.alert(
@@ -231,14 +236,14 @@ export default function AccountScreen() {
           <View style={styles.statsRow}>
             <TouchableOpacity style={styles.statCard}>
               <Text style={styles.statNumber}>28</Text>
-              <Text style={styles.statLabel}>Contributions</Text>
+              <Text style={styles.statLabel}>Cliques</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.statCard}
               onPress={() => navigation.navigate('Connections', { tab: 'followers' })}
             >
-              <Text style={styles.statNumber}>12</Text>
-              <Text style={styles.statLabel}>Events</Text>
+              <Text style={styles.statNumber}>{totalSocials}</Text>
+              <Text style={styles.statLabel}>Socials</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.statCard}>
               <Text style={styles.statNumber}>4.8</Text>
@@ -279,7 +284,7 @@ export default function AccountScreen() {
             onPress={() => setActiveTab('posts')}
           >
             <Text style={[styles.switcherText, activeTab === 'posts' && styles.activeSwitcherText]}>
-              My Contributions
+              My Cliques
             </Text>
           </TouchableOpacity>
           <TouchableOpacity 
