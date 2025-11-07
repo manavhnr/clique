@@ -6,7 +6,12 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:watchAll": "jest --watchAll",
+    "test:ci": "jest --ci --coverage --watchAll=false"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -22,6 +27,7 @@
     "expo-sms": "^14.0.7",
     "expo-status-bar": "~3.0.8",
     "firebase": "^12.5.0",
+    "jest-expo": "~54.0.13",
     "nativewind": "^4.2.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -34,9 +40,11 @@
     "react-native-svg": "^15.12.1",
     "react-native-web": "^0.21.0",
     "tailwindcss": "^3.4.17",
+    "test": "^3.3.0",
     "twilio": "^5.10.0"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.1.0",
     "typescript": "~5.9.2"
   },
