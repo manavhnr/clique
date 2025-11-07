@@ -15,6 +15,10 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { eventsService, EventData } from '../services/eventsService';
+import { useAuth } from '../contexts/AuthContext';
+import { Alert } from 'react-native';
+import { debugBookingSystem } from '../utils/debugBooking';
+import { testFirestorePermissions } from '../utils/firestoreTest';
 
 const { width, height } = Dimensions.get('window');
 
@@ -30,11 +34,13 @@ export default function EventDetailsScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const route = useRoute();
   const { eventId } = route.params as { eventId: string };
+  const { user } = useAuth();
   
   const [selectedTicket, setSelectedTicket] = useState('regular');
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [event, setEvent] = useState<EventData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRequestingBooking, setIsRequestingBooking] = useState(false);
 
   useEffect(() => {
     loadEventDetails();
@@ -52,9 +58,112 @@ export default function EventDetailsScreen() {
     }
   };
 
-  const handleBookNow = () => {
-    if (event) {
-      navigation.navigate('Booking', { eventId: event.id });
+  const handleBookingRequest = async () => {
+    if (!user || !event) {
+      Alert.alert('Error', 'Please log in to request booking');
+      return;
+    }
+
+    // Check if user is the host of this event
+    if (user.id === event.host.id) {
+      Alert.alert('Info', 'You cannot book your own event');
+      return;
+    }
+
+    // Check if user has required fields
+    if (!user.username) {
+      Alert.alert('Profile Incomplete', 'Please complete your profile with a username before booking events.');
+      return;
+    }
+
+    setIsRequestingBooking(true);
+    
+    console.log('🔍 Booking request debug info:', {
+      eventId,
+      userId: user.id,
+      username: user.username,
+      selectedTicket,
+      event: event ? { id: event.id, title: event.title } : 'No event loaded'
+    });
+    
+    try {
+      // Create user profile without undefined values
+      const userProfile: any = {
+        id: user.id,
+        name: user.name || 'User',
+        username: user.username,
+        email: user.email,
+      };
+
+      // Only add fields that have valid values (no avatar in AuthUser type)
+      if (user.age !== undefined && user.age !== null) userProfile.age = user.age;
+      if (user.city) userProfile.city = user.city;
+      if (user.socialActivityLevel) userProfile.socialActivityLevel = user.socialActivityLevel;
+
+      const result = await eventsService.createBookingRequest(
+        eventId,
+        user.id,
+        userProfile,
+        selectedTicket
+      );
+
+      console.log('📝 Booking request result:', result);
+
+      if (result.success) {
+        console.log('✅ Booking request created successfully, should appear in dashboard');
+        Alert.alert(
+          'Request Sent!', 
+          `${result.message}\n\nYou can view your request status in the "My Events" dashboard under the "Pending" tab.`,
+          [
+            {
+              text: 'View My Events',
+              onPress: () => navigation.navigate('Dashboard' as any)
+            },
+            { text: 'OK' }
+          ]
+        );
+      } else {
+        console.error('❌ Booking request failed:', result.message);
+        Alert.alert('Error', result.message);
+      }
+    } catch (error) {
+      console.error('💥 Booking request exception:', error);
+      Alert.alert('Error', 'Failed to send booking request. Please try again.');
+    } finally {
+      setIsRequestingBooking(false);
+    }
+  };
+
+  const runDebugTests = async () => {
+    console.log('🚨 Running debug tests...');
+    
+    try {
+      // Test 1: Firebase permissions
+      console.log('🔍 Testing Firestore permissions...');
+      const permissionResult = await testFirestorePermissions();
+      console.log('🔍 Permission test result:', permissionResult);
+      
+      // Test 2: Events service Firebase connection
+      console.log('🔍 Testing events service connection...');
+      const connectionResult = await eventsService.testFirebaseConnection();
+      console.log('🔍 Service connection result:', connectionResult);
+      
+      // Test 3: Run full booking system debug
+      if (connectionResult.success) {
+        console.log('🔍 Running full booking system debug...');
+        await debugBookingSystem();
+      }
+      
+      // Show comprehensive results
+      Alert.alert(
+        'Debug Results', 
+        `Firestore Test: ${permissionResult.success ? '✅' : '❌'} ${permissionResult.message}\n\nService Test: ${connectionResult.success ? '✅' : '❌'} ${connectionResult.message}`,
+        [{ text: 'OK' }]
+      );
+      
+    } catch (error: any) {
+      console.error('💥 Debug tests failed:', error);
+      Alert.alert('Debug Error', `Debug tests failed: ${error.message}`);
     }
   };
 
@@ -233,9 +342,23 @@ export default function EventDetailsScreen() {
           <Text style={styles.priceLabel}>Starting from</Text>
           <Text style={styles.price}>₹{event.pricing[selectedTicket as keyof typeof event.pricing]?.price || 0}</Text>
         </View>
-        <TouchableOpacity style={styles.bookButton} onPress={handleBookNow}>
-          <Text style={styles.bookButtonText}>Book Now</Text>
-        </TouchableOpacity>
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity 
+            style={[styles.bookButton, isRequestingBooking && styles.bookButtonDisabled]} 
+            onPress={handleBookingRequest}
+            disabled={isRequestingBooking}
+          >
+            <Text style={styles.bookButtonText}>
+              {isRequestingBooking ? 'Requesting...' : 'Request Booking'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.debugButton}
+            onPress={runDebugTests}
+          >
+            <Text style={styles.debugButtonText}>Debug</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -533,15 +656,18 @@ const styles = StyleSheet.create({
   },
   bookButton: {
     backgroundColor: '#6366F1',
-    paddingHorizontal: 32,
+    paddingHorizontal: 24,
     paddingVertical: 16,
     borderRadius: 12,
-    marginLeft: 16,
+    flex: 1,
   },
   bookButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  bookButtonDisabled: {
+    backgroundColor: '#9CA3AF',
   },
   loadingContainer: {
     flex: 1,
@@ -582,6 +708,22 @@ const styles = StyleSheet.create({
   backToEventsText: {
     color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  debugButton: {
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  debugButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '600',
   },
 });

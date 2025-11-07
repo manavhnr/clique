@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
+import { DEFAULT_AVATAR } from '../constants/images';
 
 export default function EditProfileScreen() {
   const navigation = useNavigation<any>();
@@ -114,7 +115,7 @@ export default function EditProfileScreen() {
         <View style={styles.photoSection}>
           <View style={styles.photoContainer}>
             <Image 
-              source={{ uri: 'https://picsum.photos/150/150?random=100' }}
+              source={{ uri: user?.avatar || DEFAULT_AVATAR }}
               style={styles.profilePhoto}
             />
             <TouchableOpacity 

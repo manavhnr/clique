@@ -15,6 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { useAuth } from '../contexts/AuthContext';
 import type { RootStackParamList } from '../navigation/AppNavigator';
+import { DEFAULT_AVATAR } from '../constants/images';
 
 const { width } = Dimensions.get('window');
 const postSize = (width - 60) / 3;
@@ -128,10 +129,12 @@ export default function AccountScreen() {
   const { user, logout, becomeHost } = useAuth();
   const [activeTab, setActiveTab] = useState('posts');
   
-  // Mock data for followers and following - in a real app this would come from API
-  const followers = [1, 2, 3, 4, 5, 6, 7]; // 7 followers
-  const following = [1, 2, 3, 4, 5]; // 5 following
-  const totalSocials = followers.length + following.length;
+  // Calculate real user stats
+  const postsCount = userContributions.length; // Number of posts/cliques (default: 0 if no contributions)
+  const followersCount = 0; // TODO: Add to user profile when implemented (default: 0)
+  const followingCount = 0; // TODO: Add to user profile when implemented (default: 0)
+  const totalSocials = followersCount + followingCount; // Sum of followers + following
+  const userRating = "-.-"; // TODO: Add to user profile when implemented (default: "-.-")
 
   const handleLogout = () => {
     Alert.alert(
@@ -202,7 +205,7 @@ export default function AccountScreen() {
           <View style={styles.headerTop}>
             <View style={styles.profileImageContainer}>
               <Image 
-                source={{ uri: 'https://picsum.photos/150/150?random=100' }}
+                source={{ uri: user?.avatar || DEFAULT_AVATAR }}
                 style={styles.profileImage}
               />
               <View style={[styles.statusRing, user?.isHost ? styles.hostRing : styles.memberRing]}>
@@ -235,7 +238,7 @@ export default function AccountScreen() {
           {/* Stats Cards Row */}
           <View style={styles.statsRow}>
             <TouchableOpacity style={styles.statCard}>
-              <Text style={styles.statNumber}>28</Text>
+              <Text style={styles.statNumber}>{postsCount}</Text>
               <Text style={styles.statLabel}>Cliques</Text>
             </TouchableOpacity>
             <TouchableOpacity 
@@ -246,7 +249,7 @@ export default function AccountScreen() {
               <Text style={styles.statLabel}>Socials</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.statCard}>
-              <Text style={styles.statNumber}>4.8</Text>
+              <Text style={styles.statNumber}>{userRating}</Text>
               <Text style={styles.statLabel}>Rating</Text>
             </TouchableOpacity>
           </View>

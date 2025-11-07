@@ -14,6 +14,7 @@ import DiscoverScreen from '../screens/DiscoverScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import AccountScreen from '../screens/AccountScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
+import UserProfileViewScreen from '../screens/UserProfileViewScreen';
 import EventDetailsScreen from '../screens/EventDetailsScreen';
 import BookingScreen from '../screens/BookingScreen';
 import SettingsScreen from '../screens/SettingsScreen';
@@ -22,6 +23,7 @@ import ConnectionsScreen from '../screens/ConnectionsScreen';
 import HostApplicationScreen from '../screens/HostApplicationScreen';
 import HostDashboardScreen from '../screens/HostDashboardScreen';
 import CreateEventScreen from '../screens/CreateEventScreen';
+import AttendeesListScreen from '../screens/AttendeesListScreen';
 
 export type RootStackParamList = {
   Welcome: undefined;
@@ -37,6 +39,8 @@ export type RootStackParamList = {
   HostApplication: undefined;
   HostDashboard: undefined;
   CreateEvent: { eventId?: string; mode?: 'create' | 'edit' };
+  UserProfileView: { userId: string; userName?: string };
+  AttendeesList: { eventId: string; eventTitle?: string };
 };
 
 export type MainTabParamList = {
@@ -221,8 +225,22 @@ const MainTabNavigator = React.memo(function MainTabNavigator() {
             }}
           />
           <RootStack.Screen 
+            name="UserProfileView" 
+            component={UserProfileViewScreen}
+            options={{ 
+              headerShown: false,
+            }}
+          />
+          <RootStack.Screen 
             name="CreateEvent" 
             component={CreateEventScreen}
+            options={{ 
+              headerShown: false,
+            }}
+          />
+          <RootStack.Screen 
+            name="AttendeesList" 
+            component={AttendeesListScreen}
             options={{ 
               headerShown: false,
             }}

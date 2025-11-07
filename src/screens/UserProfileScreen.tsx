@@ -10,6 +10,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
+import { DEFAULT_AVATAR } from '../constants/images';
 
 export default function ProfileScreen() {
   const { user } = useAuth();
@@ -40,9 +41,10 @@ export default function ProfileScreen() {
         <View style={styles.headerSection}>
           <View style={styles.profileHeader}>
             <View style={styles.avatarContainer}>
-              <View style={styles.avatar}>
-                <Ionicons name="person" size={60} color="#6B7280" />
-              </View>
+              <Image 
+                source={{ uri: user?.avatar || DEFAULT_AVATAR }}
+                style={styles.avatar}
+              />
               <TouchableOpacity style={styles.editAvatarButton}>
                 <Ionicons name="camera" size={16} color="#FFFFFF" />
               </TouchableOpacity>
@@ -254,10 +256,6 @@ const styles = StyleSheet.create({
     height: 100,
     borderRadius: 50,
     backgroundColor: '#F9FAFB',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#E5E7EB',
   },
   
   editAvatarButton: {

@@ -6,6 +6,7 @@ import {
   deleteDoc, 
   getDocs, 
   getDoc, 
+  setDoc,
   query, 
   where, 
   orderBy, 
@@ -14,6 +15,8 @@ import {
   Timestamp 
 } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
+import { BookingRequest, UserBooking } from '../types/booking';
+import { DEFAULT_AVATAR } from '../constants/images';
 
 export interface EventData {
   id: string;
@@ -86,6 +89,8 @@ export interface CreateEventData {
 
 class EventsService {
   private eventsCollection = collection(db, 'events');
+  private bookingRequestsCollection = collection(db, 'bookingRequests');
+  private usersCollection = collection(db, 'users');
   private hostApplicationsCollection = collection(db, 'hostApplications');
   
   // Create a new event
@@ -116,7 +121,7 @@ class EventsService {
           id: hostId,
           name: hostInfo.name || 'Host',
           username: hostInfo.username || '@host',
-          avatar: hostInfo.avatar || 'https://picsum.photos/100/100?random=21',
+          avatar: hostInfo.avatar || DEFAULT_AVATAR,
           rating: hostInfo.rating || 4.5,
           eventsHosted: hostInfo.eventsHosted || 0,
           isVerified: hostInfo.isVerified || true,
@@ -616,6 +621,725 @@ class EventsService {
         success: false,
         message: 'Failed to update event status',
       };
+    }
+  }
+
+  // Booking Request System
+
+  // Helper method to get user by username (unique identifier)
+  async getUserByUsername(username: string): Promise<any | null> {
+    try {
+      const userQuery = query(
+        this.usersCollection,
+        where('username', '==', username)
+      );
+      const userSnapshot = await getDocs(userQuery);
+      
+      if (!userSnapshot.empty) {
+        const userDoc = userSnapshot.docs[0];
+        return {
+          id: userDoc.id,
+          ...userDoc.data()
+        };
+      }
+      return null;
+    } catch (error) {
+      console.error('Error fetching user by username:', error);
+      return null;
+    }
+  }
+
+  // Helper method to ensure event-host-attendee relationship
+  async createEventHostAttendeeMapping(eventId: string, hostId: string, attendeeId: string): Promise<void> {
+    try {
+      await addDoc(collection(db, 'eventMappings'), {
+        eventId,
+        hostId,
+        attendeeId,
+        createdAt: new Date().toISOString(),
+        status: 'active'
+      });
+    } catch (error) {
+      console.error('Error creating event mapping:', error);
+    }
+  }
+
+  // Test Firebase connectivity and permissions
+  async testFirebaseConnection(): Promise<{ success: boolean; message: string }> {
+    try {
+      console.log('🔍 Testing Firebase connectivity...');
+      
+      // Try to read from a simple collection
+      const testDoc = await getDoc(doc(db, 'test', 'connection'));
+      console.log('✅ Firebase read test successful');
+      
+      // Try to write a simple test document
+      await setDoc(doc(db, 'test', 'connection'), {
+        timestamp: new Date().toISOString(),
+        test: true
+      });
+      console.log('✅ Firebase write test successful');
+      
+      return { success: true, message: 'Firebase connection successful' };
+      
+    } catch (error: any) {
+      console.error('❌ Firebase connectivity test failed:', error);
+      
+      if (error.code === 'permission-denied') {
+        return { 
+          success: false, 
+          message: 'Firebase permission denied - security rules are blocking access' 
+        };
+      }
+      
+      if (error.code === 'unavailable') {
+        return { 
+          success: false, 
+          message: 'Firebase unavailable - check internet connection' 
+        };
+      }
+      
+      return { 
+        success: false, 
+        message: `Firebase connection failed: ${error.code || error.message}` 
+      };
+    }
+  }
+
+  // Create a booking request with proper validation
+  async createBookingRequest(
+    eventId: string, 
+    userId: string, 
+    userProfile: any, 
+    ticketTier: string
+  ): Promise<{ success: boolean; message: string; requestId?: string }> {
+    try {
+      console.log('🔍 Testing Firebase connection before booking request...');
+      const connectionTest = await this.testFirebaseConnection();
+      if (!connectionTest.success) {
+        return {
+          success: false,
+          message: `Connection failed: ${connectionTest.message}`
+        };
+      }
+      console.log('✅ Firebase connection verified');
+
+      // Validate user exists and has username
+      if (!userProfile.username) {
+        return { success: false, message: 'Username is required for booking requests' };
+      }
+
+      // Get event details
+      let event = await this.getEventById(eventId);
+      if (!event) {
+        console.log('🔍 Event not found in Firestore, creating sample events and retrying...');
+        // Try to create sample events first
+        await this.createSampleEvents();
+        // Try again
+        event = await this.getEventById(eventId);
+        if (!event) {
+          return { success: false, message: 'Event not found. Please try refreshing the app.' };
+        }
+      }
+
+      // Verify event exists in the events collection
+      const eventDoc = await getDoc(doc(this.eventsCollection, eventId));
+      if (!eventDoc.exists()) {
+        return { success: false, message: 'Event does not exist in database. Please try refreshing the app.' };
+      }
+
+      // Check if user already has a request for this event
+      const existingRequestQuery = query(
+        this.bookingRequestsCollection,
+        where('eventId', '==', eventId),
+        where('userId', '==', userId)
+      );
+      const existingRequestSnapshot = await getDocs(existingRequestQuery);
+      
+      if (!existingRequestSnapshot.empty) {
+        return { success: false, message: 'You already have a pending request for this event' };
+      }
+
+      // Validate ticket tier exists
+      const ticketPrice = event.pricing[ticketTier as keyof typeof event.pricing]?.price;
+      if (ticketPrice === undefined) {
+        return { success: false, message: 'Invalid ticket tier selected' };
+      }
+
+      // Create booking request with all required fields (filter out undefined values)
+      const cleanUserProfile: any = {
+        id: userProfile.id,
+        name: userProfile.name || 'Unknown User',
+        username: userProfile.username,
+        email: userProfile.email || '',
+      };
+
+      // Only add optional fields if they have valid values
+      if (userProfile.avatar) {
+        cleanUserProfile.avatar = userProfile.avatar;
+      }
+      if (userProfile.age !== undefined && userProfile.age !== null) {
+        cleanUserProfile.age = userProfile.age;
+      }
+      if (userProfile.city) {
+        cleanUserProfile.city = userProfile.city;
+      }
+      if (userProfile.socialActivityLevel) {
+        cleanUserProfile.socialActivityLevel = userProfile.socialActivityLevel;
+      }
+
+      const bookingRequest: Omit<BookingRequest, 'id'> = {
+        eventId,
+        userId,
+        hostId: event.host.id,
+        status: 'pending',
+        ticketTier,
+        price: ticketPrice,
+        requestedAt: new Date().toISOString(),
+        userProfile: cleanUserProfile,
+        eventDetails: {
+          title: event.title,
+          date: event.date,
+          time: event.time,
+          location: event.location,
+        },
+      };
+
+      const docRef = await addDoc(this.bookingRequestsCollection, bookingRequest);
+
+      // Create event-host-attendee mapping for tracking
+      await this.createEventHostAttendeeMapping(eventId, event.host.id, userId);
+
+      return {
+        success: true,
+        message: 'Booking request sent successfully! The host will review and respond soon.',
+        requestId: docRef.id,
+      };
+    } catch (error) {
+      console.error('Error creating booking request:', error);
+      console.error('Error details:', {
+        eventId,
+        userId,
+        userProfile,
+        ticketTier,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      
+      // Check if it's a Firestore permission or network error
+      if (error instanceof Error && (
+        error.message.includes('permission') || 
+        error.message.includes('network') || 
+        error.message.includes('PERMISSION_DENIED')
+      )) {
+        return {
+          success: false,
+          message: 'Database permission error. Please check your internet connection and try again.',
+        };
+      }
+      
+      return {
+        success: false,
+        message: `Failed to send booking request: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+    }
+  }
+
+  // Get booking requests for a host
+  async getBookingRequestsForHost(hostId: string): Promise<BookingRequest[]> {
+    try {
+      const q = query(
+        this.bookingRequestsCollection,
+        where('hostId', '==', hostId),
+        where('status', '==', 'pending')
+      );
+      
+      const snapshot = await getDocs(q);
+      const requests: BookingRequest[] = [];
+      
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        requests.push({
+          id: doc.id,
+          ...data,
+        } as BookingRequest);
+      });
+
+      // Sort by request date (newest first)
+      requests.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
+      
+      return requests;
+    } catch (error) {
+      console.error('Error fetching booking requests for host:', error);
+      return [];
+    }
+  }
+
+  // Get user's booking requests/bookings
+  async getUserBookings(userId: string): Promise<UserBooking[]> {
+    try {
+      const q = query(
+        this.bookingRequestsCollection,
+        where('userId', '==', userId)
+      );
+      
+      const snapshot = await getDocs(q);
+      const bookings: UserBooking[] = [];
+      
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        bookings.push({
+          id: doc.id,
+          eventId: data.eventId,
+          status: data.status,
+          ticketTier: data.ticketTier,
+          price: data.price,
+          requestedAt: data.requestedAt,
+          respondedAt: data.respondedAt,
+          qrCode: data.qrCode,
+          eventDetails: {
+            ...data.eventDetails,
+            images: [], // We'll need to fetch these separately if needed
+          },
+        } as UserBooking);
+      });
+
+      // Sort by request date (newest first)
+      bookings.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
+      
+      return bookings;
+    } catch (error) {
+      console.error('Error fetching user bookings:', error);
+      return [];
+    }
+  }
+
+  // Get user profile by ID (for viewing other users' profiles)
+  async getUserProfileById(userId: string): Promise<any | null> {
+    try {
+      // First, try to get profile from a user in booking requests
+      const bookingQuery = query(
+        this.bookingRequestsCollection,
+        where('userId', '==', userId),
+        limit(1)
+      );
+      
+      const bookingSnapshot = await getDocs(bookingQuery);
+      
+      if (!bookingSnapshot.empty) {
+        const bookingData = bookingSnapshot.docs[0].data();
+        return {
+          id: userId,
+          name: bookingData.userProfile.name,
+          username: bookingData.userProfile.username,
+          email: bookingData.userProfile.email,
+          age: bookingData.userProfile.age,
+          city: bookingData.userProfile.city,
+          socialActivityLevel: bookingData.userProfile.socialActivityLevel,
+          avatar: bookingData.userProfile.avatar,
+          isHost: false, // We could check this elsewhere if needed
+        };
+      }
+
+      // If not found in booking requests, try the users collection (if it exists)
+      try {
+        const userDoc = await getDoc(doc(this.usersCollection, userId));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          return {
+            id: userId,
+            name: userData.name,
+            username: userData.username,
+            email: userData.email,
+            age: userData.age,
+            city: userData.city,
+            socialActivityLevel: userData.socialActivityLevel,
+            avatar: userData.avatar,
+            phoneNumber: userData.phoneNumber,
+            isHost: userData.isHost || false,
+          };
+        }
+      } catch (error) {
+        console.log('Users collection may not exist, that\'s ok');
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      return null;
+    }
+  }
+
+  // Approve booking request (sets to payment pending, doesn't generate QR yet)
+  async approveBookingRequest(requestId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const requestRef = doc(this.bookingRequestsCollection, requestId);
+      const requestDoc = await getDoc(requestRef);
+      
+      if (!requestDoc.exists()) {
+        return { success: false, message: 'Request not found' };
+      }
+
+      const requestData = requestDoc.data() as BookingRequest;
+      
+      // Check event capacity
+      const event = await this.getEventById(requestData.eventId);
+      if (!event) {
+        return { success: false, message: 'Event not found' };
+      }
+
+      if (event.capacity.booked >= event.capacity.total) {
+        return { success: false, message: 'Event is at full capacity' };
+      }
+
+      // Update request status to approved (user can pay later from live tab)
+      await updateDoc(requestRef, {
+        status: 'approved',
+        paymentStatus: 'pending',
+        respondedAt: new Date().toISOString(),
+      });
+
+      return {
+        success: true,
+        message: 'Booking request approved! Event moved to live tab with payment option.',
+      };
+    } catch (error) {
+      console.error('Error approving booking request:', error);
+      return {
+        success: false,
+        message: 'Failed to approve request. Please try again.',
+      };
+    }
+  }
+
+  // Process payment and generate QR code
+  async processPayment(requestId: string, paymentDetails?: any): Promise<{ success: boolean; message: string; qrCode?: string }> {
+    try {
+      const requestRef = doc(this.bookingRequestsCollection, requestId);
+      const requestDoc = await getDoc(requestRef);
+      
+      if (!requestDoc.exists()) {
+        return { success: false, message: 'Booking request not found' };
+      }
+
+      const requestData = requestDoc.data() as BookingRequest;
+      
+      if (requestData.status !== 'approved' && requestData.status !== 'payment_pending') {
+        return { success: false, message: 'Payment not required for this booking' };
+      }
+
+      // Simulate payment processing (in real app, integrate with payment gateway)
+      console.log('🔄 Processing payment...', {
+        requestId,
+        amount: requestData.price,
+        eventTitle: requestData.eventDetails.title,
+        userEmail: requestData.userProfile.email
+      });
+
+      // For demo purposes, we'll simulate successful payment
+      // In real implementation, integrate with Razorpay, Stripe, etc.
+      const paymentSuccessful = true; // This would come from actual payment gateway
+
+      if (!paymentSuccessful) {
+        await updateDoc(requestRef, {
+          paymentStatus: 'failed',
+        });
+        return { success: false, message: 'Payment failed. Please try again.' };
+      }
+
+      // Generate QR code only after successful payment
+      const qrCode = `HYN-${requestData.eventId}-${requestData.userId}-${Date.now()}`;
+
+      // Update booking to paid status with QR code
+      await updateDoc(requestRef, {
+        status: 'paid',
+        paymentStatus: 'completed',
+        paymentCompletedAt: new Date().toISOString(),
+        qrCode: qrCode,
+      });
+
+      // Update event capacity only after payment is completed
+      const event = await this.getEventById(requestData.eventId);
+      if (event) {
+        await updateDoc(doc(this.eventsCollection, requestData.eventId), {
+          'capacity.booked': event.capacity.booked + 1,
+          'capacity.remaining': event.capacity.total - event.capacity.booked - 1,
+          updatedAt: new Date(),
+        });
+      }
+
+      console.log('✅ Payment processed successfully', { qrCode });
+
+      return {
+        success: true,
+        message: 'Payment successful! Your ticket is ready.',
+        qrCode: qrCode,
+      };
+    } catch (error) {
+      console.error('Error processing payment:', error);
+      return {
+        success: false,
+        message: 'Payment processing failed. Please try again.',
+      };
+    }
+  }
+
+  // Reject booking request
+  async rejectBookingRequest(requestId: string, reason?: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const requestRef = doc(this.bookingRequestsCollection, requestId);
+      
+      await updateDoc(requestRef, {
+        status: 'rejected',
+        respondedAt: new Date().toISOString(),
+        rejectionReason: reason || 'Request was declined by host',
+      });
+
+      return {
+        success: true,
+        message: 'Booking request rejected',
+      };
+    } catch (error) {
+      console.error('Error rejecting booking request:', error);
+      return {
+        success: false,
+        message: 'Failed to reject request. Please try again.',
+      };
+    }
+  }
+
+  // Cancel booking request (by user)
+  async cancelBookingRequest(requestId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const requestRef = doc(this.bookingRequestsCollection, requestId);
+      const requestDoc = await getDoc(requestRef);
+      
+      if (!requestDoc.exists()) {
+        return { success: false, message: 'Request not found' };
+      }
+
+      const requestData = requestDoc.data();
+      
+      if (requestData.status !== 'pending') {
+        return { success: false, message: 'Can only cancel pending requests' };
+      }
+
+      await deleteDoc(requestRef);
+
+      return {
+        success: true,
+        message: 'Booking request cancelled successfully',
+      };
+    } catch (error) {
+      console.error('Error cancelling booking request:', error);
+      return {
+        success: false,
+        message: 'Failed to cancel request. Please try again.',
+      };
+    }
+  }
+
+  // Subscribe to booking requests for host (real-time)
+  subscribeToHostBookingRequests(hostId: string, callback: (requests: BookingRequest[]) => void) {
+    const q = query(
+      this.bookingRequestsCollection,
+      where('hostId', '==', hostId),
+      where('status', '==', 'pending')
+    );
+
+    return onSnapshot(q, (snapshot) => {
+      const requests: BookingRequest[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        requests.push({
+          id: doc.id,
+          ...data,
+        } as BookingRequest);
+      });
+      
+      requests.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
+      callback(requests);
+    });
+  }
+
+  // Subscribe to user bookings (real-time)
+  subscribeToUserBookings(userId: string, callback: (bookings: UserBooking[]) => void) {
+    const q = query(
+      this.bookingRequestsCollection,
+      where('userId', '==', userId)
+    );
+
+    return onSnapshot(q, (snapshot) => {
+      const bookings: UserBooking[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        bookings.push({
+          id: doc.id,
+          eventId: data.eventId,
+          status: data.status,
+          ticketTier: data.ticketTier,
+          price: data.price,
+          requestedAt: data.requestedAt,
+          respondedAt: data.respondedAt,
+          qrCode: data.qrCode,
+          eventDetails: {
+            ...data.eventDetails,
+            images: [],
+          },
+        } as UserBooking);
+      });
+      
+      bookings.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
+      callback(bookings);
+    });
+  }
+
+  // Get all attendees for an event (only paid attendees)
+  async getEventAttendees(eventId: string): Promise<any[]> {
+    try {
+      // Get all paid booking requests for this event
+      const q = query(
+        this.bookingRequestsCollection,
+        where('eventId', '==', eventId),
+        where('status', '==', 'paid')
+      );
+      
+      const snapshot = await getDocs(q);
+      const attendees: any[] = [];
+      
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        attendees.push({
+          id: doc.id,
+          userId: data.userId,
+          userProfile: data.userProfile,
+          ticketTier: data.ticketTier,
+          price: data.price,
+          requestedAt: data.requestedAt,
+          approvedAt: data.respondedAt,
+          paidAt: data.paymentCompletedAt,
+          qrCode: data.qrCode,
+        });
+      });
+
+      // Sort by payment date (newest first)
+      attendees.sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
+      
+      return attendees;
+    } catch (error) {
+      console.error('Error fetching event attendees:', error);
+      return [];
+    }
+  }
+
+  // Helper method to create sample events for testing
+  async createSampleEvents(): Promise<void> {
+    try {
+      // Check if events already exist to avoid duplicates
+      const existingEvents = await this.getPublishedEvents();
+      if (existingEvents.length > 0) {
+        console.log('📋 Sample events already exist, skipping creation');
+        return;
+      }
+
+      console.log('🔨 Creating sample events...');
+      
+      const sampleEvents = [
+        {
+          title: "Tech Conference 2025",
+          description: "A comprehensive technology conference featuring the latest in AI, blockchain, and web development. Join industry leaders and innovators for a day of learning and networking.",
+          category: "Technology",
+          date: "2025-12-15",
+          time: "09:00",
+          endTime: "18:00",
+          location: {
+            name: "Convention Center",
+            address: "123 Tech Street",
+            city: "San Francisco"
+          },
+          pricing: {
+            early: { price: 500, label: "Early Bird", available: true },
+            regular: { price: 750, label: "Regular", available: true },
+            premium: { price: 1200, label: "VIP", available: true }
+          },
+          host: {
+            id: "demo_host_1",
+            name: "Tech Events Inc",
+            username: "techevents",
+            avatar: DEFAULT_AVATAR,
+            rating: 4.8,
+            eventsHosted: 25,
+            isVerified: true
+          },
+          images: [
+            "https://picsum.photos/400/600?random=1",
+            "https://picsum.photos/400/600?random=2"
+          ],
+          amenities: ["WiFi", "Lunch", "Networking", "Swag Bag", "Certificates"],
+          capacity: {
+            total: 500,
+            booked: 0,
+            remaining: 500
+          },
+          ageRestriction: "18+",
+          dressCode: "Business Casual",
+          tags: ["Technology", "AI", "Blockchain"],
+          status: 'published' as const,
+          reviews: { rating: 4.8, count: 0 },
+          createdAt: new Date(),
+          updatedAt: new Date()
+        },
+        {
+          title: "Music Festival 2025", 
+          description: "An amazing outdoor music festival featuring top artists from around the world. Three days of non-stop entertainment.",
+          category: "Music",
+          date: "2025-12-20",
+          time: "14:00",
+          endTime: "23:00",
+          location: {
+            name: "Central Park",
+            address: "456 Music Avenue", 
+            city: "Mumbai"
+          },
+          pricing: {
+            regular: { price: 2500, label: "General Admission", available: true },
+            premium: { price: 5000, label: "VIP Experience", available: true }
+          },
+          host: {
+            id: "demo_host_2",
+            name: "Music Events Co",
+            username: "musicevents",
+            avatar: DEFAULT_AVATAR,
+            rating: 4.9,
+            eventsHosted: 15,
+            isVerified: true
+          },
+          images: [
+            "https://picsum.photos/400/600?random=3",
+            "https://picsum.photos/400/600?random=4"
+          ],
+          amenities: ["Food Stalls", "Bar", "Rest Areas", "Parking"],
+          capacity: {
+            total: 1000,
+            booked: 0,
+            remaining: 1000
+          },
+          ageRestriction: "All Ages",
+          dressCode: "Casual",
+          tags: ["Music", "Festival", "Outdoor"],
+          status: 'published' as const,
+          reviews: { rating: 4.9, count: 0 },
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      ];
+
+      for (const event of sampleEvents) {
+        await addDoc(this.eventsCollection, event);
+      }
+      
+      console.log('✅ Sample events created successfully');
+    } catch (error) {
+      console.error('❌ Error creating sample events:', error);
     }
   }
 }

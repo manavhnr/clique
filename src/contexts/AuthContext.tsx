@@ -47,6 +47,7 @@ interface UserProfile {
   age?: number;
   city?: string;
   phoneNumber?: string;
+  avatar?: string;
   socialActivityLevel?: 'rarely' | 'occasionally' | 'frequently' | 'very_frequently';
   isHost: boolean;
   hostApplicationStatus?: 'pending' | 'approved' | 'rejected' | null;
@@ -303,6 +304,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       // Demo implementation
       if (otp === '123456') {
+        // Create a demo user with username for testing
+        const demoUser: AuthUser = {
+          id: `demo_${Date.now()}`,
+          phoneNumber,
+          email: 'demo@hyn.com',
+          username: `user_${Date.now()}`,
+          name: 'Demo User',
+          age: 25,
+          city: 'Mumbai',
+          socialActivityLevel: 'frequently',
+          isProfileComplete: true,
+          isVerified: true,
+          isHost: false,
+          createdAt: new Date().toISOString(),
+        };
+        
+        setUser(demoUser);
         return { success: true, message: 'OTP verified successfully (Demo Mode)' };
       }
       return { success: false, message: 'Invalid OTP. Please try again.' };
@@ -331,11 +349,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const completeRegistration = async (data: CompleteRegistrationData, phoneNumber: string): Promise<{ success: boolean; message: string }> => {
     try {
+      // For demo mode, create a complete user without Firebase Auth
       if (!auth.currentUser) {
-        return { success: false, message: 'No authenticated user found' };
+        // Demo mode - create user with complete profile
+        const demoUser: AuthUser = {
+          id: `demo_${Date.now()}`,
+          phoneNumber,
+          email: data.email,
+          username: data.username,
+          name: data.name,
+          age: data.age,
+          city: data.city,
+          socialActivityLevel: data.socialActivityLevel,
+          isProfileComplete: true,
+          isVerified: true,
+          isHost: false,
+          createdAt: new Date().toISOString(),
+        };
+        
+        setUser(demoUser);
+        return { success: true, message: 'Registration completed successfully (Demo Mode)' };
       }
 
-      // Update user profile in Firestore
+      // Update user profile in Firestore for real Firebase users
       await updateDoc(doc(db, 'users', auth.currentUser.uid), {
         username: data.username,
         name: data.name,

@@ -8,17 +8,21 @@ import {
   SafeAreaView,
   Alert,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { eventsService, EventData } from '../services/eventsService';
+import { BookingRequest } from '../types/booking';
+import { DEFAULT_AVATAR } from '../constants/images';
 
 export default function HostDashboardScreen() {
   const navigation = useNavigation<any>();
   const { user } = useAuth();
   const [events, setEvents] = useState<EventData[]>([]);
   const [invitations, setInvitations] = useState<any[]>([]);
+  const [bookingRequests, setBookingRequests] = useState<BookingRequest[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState<'all' | 'published' | 'draft'>('all');
@@ -50,6 +54,10 @@ export default function HostDashboardScreen() {
         allInvitations.push(...eventInvitations);
       }
       setInvitations(allInvitations);
+
+      // Load booking requests for this host
+      const hostBookingRequests = await eventsService.getBookingRequestsForHost(user.id);
+      setBookingRequests(hostBookingRequests);
     } catch (error) {
       console.error('Error loading host data:', error);
     } finally {
@@ -84,8 +92,8 @@ export default function HostDashboardScreen() {
     navigation.navigate('CreateEvent');
   };
 
-  const handleEventPress = (eventId: string) => {
-    navigation.navigate('EventDetails', { eventId });
+  const handleEventPress = (eventId: string, eventTitle: string) => {
+    navigation.navigate('AttendeesList', { eventId, eventTitle });
   };
 
   const handleEditEvent = (eventId: string) => {
@@ -147,6 +155,23 @@ export default function HostDashboardScreen() {
     }
   };
 
+  const handleBookingRequestResponse = async (requestId: string, action: 'approve' | 'reject') => {
+    try {
+      const result = action === 'approve' 
+        ? await eventsService.approveBookingRequest(requestId)
+        : await eventsService.rejectBookingRequest(requestId);
+      
+      if (result.success) {
+        Alert.alert('Success', result.message);
+        loadHostData(); // Reload data
+      } else {
+        Alert.alert('Error', result.message);
+      }
+    } catch (error) {
+      Alert.alert('Error', `Failed to ${action} booking request`);
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -198,6 +223,137 @@ export default function HostDashboardScreen() {
             <Text style={styles.statLabel}>Total Earnings</Text>
           </View>
         </View>
+
+        {/* Booking Requests */}
+        {bookingRequests.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Booking Requests ({bookingRequests.length})</Text>
+            {bookingRequests.slice(0, 5).map((request) => (
+              <View key={request.id} style={styles.bookingRequestCard}>
+                <TouchableOpacity 
+                  style={styles.requestUserInfo}
+                  onPress={() => {
+                    console.log('🔍 Viewing user profile:', { 
+                      userId: request.userId, 
+                      userName: request.userProfile.name 
+                    });
+                    navigation.navigate('UserProfileView', { 
+                      userId: request.userId, 
+                      userName: request.userProfile.name 
+                    });
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Image 
+                    source={{ 
+                      uri: request.userProfile.avatar || DEFAULT_AVATAR 
+                    }} 
+                    style={styles.userAvatar} 
+                  />
+                  <View style={styles.userDetails}>
+                    <Text style={[styles.userName, styles.clickableUserName]}>
+                      {request.userProfile.name}
+                    </Text>
+                    <Text style={styles.userEmail}>{request.userProfile.email}</Text>
+                    {request.userProfile.city && (
+                      <Text style={styles.userCity}>{request.userProfile.city}</Text>
+                    )}
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+                </TouchableOpacity>
+                
+                <View style={styles.requestEventInfo}>
+                  <Text style={styles.requestEventTitle}>{request.eventDetails.title}</Text>
+                  <Text style={styles.requestDetails}>
+                    {request.ticketTier} ticket • ₹{request.price}
+                  </Text>
+                  <Text style={styles.requestDate}>
+                    Requested {new Date(request.requestedAt).toLocaleDateString()}
+                  </Text>
+                  
+                  {/* Status indicator */}
+                  <View style={styles.statusContainer}>
+                    {request.status === 'pending' && (
+                      <View style={[styles.requestStatusBadge, styles.statusPending]}>
+                        <Ionicons name="time-outline" size={12} color="#F59E0B" />
+                        <Text style={styles.statusPendingText}>Awaiting Review</Text>
+                      </View>
+                    )}
+                    {request.status === 'approved' && (
+                      <View style={[styles.requestStatusBadge, styles.statusApproved]}>
+                        <Ionicons name="checkmark" size={12} color="#D97706" />
+                        <Text style={styles.statusApprovedText}>Approved - Payment Pending</Text>
+                      </View>
+                    )}
+                    {request.status === 'payment_pending' && (
+                      <View style={[styles.requestStatusBadge, styles.statusPaymentPending]}>
+                        <Ionicons name="card-outline" size={12} color="#6366F1" />
+                        <Text style={styles.statusPaymentPendingText}>Payment Pending</Text>
+                      </View>
+                    )}
+                    {request.status === 'paid' && (
+                      <View style={[styles.requestStatusBadge, styles.statusPaid]}>
+                        <Ionicons name="checkmark-circle" size={12} color="#10B981" />
+                        <Text style={styles.statusPaidText}>Paid & Confirmed</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+
+                {/* Actions based on status */}
+                {request.status === 'pending' && (
+                  <View style={styles.requestActions}>
+                    <TouchableOpacity
+                      style={styles.approveButton}
+                      onPress={() => handleBookingRequestResponse(request.id, 'approve')}
+                    >
+                      <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                      <Text style={styles.approveButtonText}>Approve</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.rejectButton}
+                      onPress={() => handleBookingRequestResponse(request.id, 'reject')}
+                    >
+                      <Ionicons name="close" size={16} color="#FFFFFF" />
+                      <Text style={styles.rejectButtonText}>Reject</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                
+                {request.status === 'payment_pending' && (
+                  <View style={styles.requestActions}>
+                    <View style={styles.paymentPendingInfo}>
+                      <Ionicons name="information-circle-outline" size={16} color="#6366F1" />
+                      <Text style={styles.paymentPendingText}>Waiting for user to complete payment</Text>
+                    </View>
+                  </View>
+                )}
+                
+                {request.status === 'paid' && (
+                  <View style={styles.requestActions}>
+                    <View style={styles.paidInfo}>
+                      <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                      <Text style={styles.paidText}>
+                        Paid on {request.paymentCompletedAt ? new Date(request.paymentCompletedAt).toLocaleDateString() : 'N/A'}
+                      </Text>
+                    </View>
+                    <TouchableOpacity style={styles.viewTicketButton}>
+                      <Ionicons name="qr-code-outline" size={16} color="#6366F1" />
+                      <Text style={styles.viewTicketText}>View QR</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            ))}
+            
+            {bookingRequests.length > 5 && (
+              <TouchableOpacity style={styles.viewAllButton}>
+                <Text style={styles.viewAllText}>View All ({bookingRequests.length}) Requests</Text>
+                <Ionicons name="chevron-forward" size={16} color="#6366F1" />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {/* Pending Invitations */}
         {pendingInvitations.length > 0 && (
@@ -307,7 +463,7 @@ export default function HostDashboardScreen() {
               <TouchableOpacity
                 key={event.id}
                 style={styles.eventCard}
-                onPress={() => handleEventPress(event.id)}
+                onPress={() => handleEventPress(event.id, event.title)}
               >
                 <View style={styles.eventHeader}>
                   <View style={styles.eventInfo}>
@@ -701,5 +857,220 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  bookingRequestCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#6366F1',
+  },
+  requestUserInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
+  },
+  userAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
+  },
+  userDetails: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  clickableUserName: {
+    color: '#6366F1',
+    textDecorationLine: 'underline',
+  },
+  userEmail: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  userCity: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 1,
+  },
+  requestEventInfo: {
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+  },
+  requestEventTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  requestDetails: {
+    fontSize: 12,
+    color: '#6366F1',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  requestDate: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
+  requestActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  approveButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#10B981',
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  approveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  rejectButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EF4444',
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  rejectButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#F8FAFF',
+    borderWidth: 1,
+    borderColor: '#6366F1',
+    marginTop: 8,
+  },
+  viewAllText: {
+    color: '#6366F1',
+    fontSize: 14,
+    fontWeight: '600',
+    marginRight: 4,
+  },
+  // Payment status styles
+  statusContainer: {
+    marginTop: 8,
+  },
+  requestStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  statusPending: {
+    backgroundColor: '#FEF3C7',
+  },
+  statusPendingText: {
+    color: '#92400E',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  statusPaymentPending: {
+    backgroundColor: '#F8FAFF',
+  },
+  statusPaymentPendingText: {
+    color: '#4F46E5',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  statusApproved: {
+    backgroundColor: '#FEF3C7',
+  },
+  statusApprovedText: {
+    color: '#92400E',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  statusPaid: {
+    backgroundColor: '#D1FAE5',
+  },
+  statusPaidText: {
+    color: '#065F46',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  paymentPendingInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8FAFF',
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  paymentPendingText: {
+    color: '#4F46E5',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 6,
+  },
+  paidInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F0FDF4',
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  paidText: {
+    color: '#166534',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 6,
+  },
+  viewTicketButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#6366F1',
+    backgroundColor: '#FFFFFF',
+  },
+  viewTicketText: {
+    color: '#6366F1',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 4,
   },
 });

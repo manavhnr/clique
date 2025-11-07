@@ -10,6 +10,7 @@ export interface AuthUser {
   age?: number;
   city?: string;
   email?: string;
+  avatar?: string;
   socialActivityLevel?: 'rarely' | 'occasionally' | 'frequently' | 'very_frequently';
   isProfileComplete?: boolean;
 }

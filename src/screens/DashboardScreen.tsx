@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,9 +10,13 @@ import {
   Dimensions,
   Modal,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
+import { eventsService } from '../services/eventsService';
+import { UserBooking } from '../types/booking';
 import QRCode from 'react-native-qrcode-svg';
 
 const { width } = Dimensions.get('window');
@@ -88,14 +92,55 @@ export default function DashboardScreen() {
   const [activeTab, setActiveTab] = useState('live');
   const [showQRModal, setShowQRModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
-  const [pendingEvents, setPendingEvents] = useState(mockPendingEvents);
+  const [userBookings, setUserBookings] = useState<UserBooking[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+
+    setIsLoading(true);
+    
+    // Set up real-time subscription
+    const unsubscribe = eventsService.subscribeToUserBookings(user.id, (bookings) => {
+      console.log('📋 User bookings updated:', bookings);
+      setUserBookings(bookings);
+      setIsLoading(false);
+    });
+
+    // Cleanup subscription on unmount
+    return unsubscribe;
+  }, [user]);
+
+  // Refresh bookings when screen comes into focus (backup method)
+  useFocusEffect(
+    useCallback(() => {
+      if (user) {
+        // The real-time subscription handles updates, but we can force refresh here if needed
+        console.log('📱 Dashboard screen focused - real-time subscription is active');
+      }
+    }, [user])
+  );
+
+  const loadUserBookings = async () => {
+    if (!user) return;
+    
+    try {
+      setIsLoading(true);
+      const bookings = await eventsService.getUserBookings(user.id);
+      setUserBookings(bookings);
+    } catch (error) {
+      console.error('Error loading user bookings:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleShowQR = (event: any) => {
     setSelectedEvent(event);
     setShowQRModal(true);
   };
 
-  const handleCancelRequest = (eventId: string) => {
+  const handleCancelRequest = async (requestId: string) => {
     Alert.alert(
       'Cancel Request',
       'Are you sure you want to cancel this event request?',
@@ -107,8 +152,59 @@ export default function DashboardScreen() {
         {
           text: 'Yes, Cancel',
           style: 'destructive',
-          onPress: () => {
-            setPendingEvents(pendingEvents.filter(event => event.id !== eventId));
+          onPress: async () => {
+            try {
+              const result = await eventsService.cancelBookingRequest(requestId);
+              if (result.success) {
+                loadUserBookings(); // Refresh the list
+              } else {
+                Alert.alert('Error', result.message);
+              }
+            } catch (error) {
+              console.error('Error cancelling request:', error);
+              Alert.alert('Error', 'Failed to cancel request');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handlePayment = async (requestId: string) => {
+    Alert.alert(
+      'Complete Payment',
+      'Proceed with payment to confirm your booking?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Pay Now',
+          style: 'default',
+          onPress: async () => {
+            try {
+              console.log('🔄 Processing payment for request:', requestId);
+              const result = await eventsService.processPayment(requestId);
+              
+              if (result.success) {
+                Alert.alert(
+                  'Payment Successful!', 
+                  `${result.message}\n\nQR Code: ${result.qrCode}`,
+                  [
+                    {
+                      text: 'OK',
+                      onPress: () => loadUserBookings() // Refresh the list
+                    }
+                  ]
+                );
+              } else {
+                Alert.alert('Payment Failed', result.message);
+              }
+            } catch (error) {
+              console.error('Error processing payment:', error);
+              Alert.alert('Error', 'Payment failed. Please try again.');
+            }
           },
         },
       ]
@@ -181,34 +277,78 @@ export default function DashboardScreen() {
     </View>
   );
 
-  const renderPendingEventCard = (event: any) => (
-    <View key={event.id} style={styles.eventCard}>
-      <Image source={{ uri: event.image }} style={styles.eventImage} />
+  const renderPendingEventCard = (booking: UserBooking) => (
+    <View key={booking.id} style={styles.eventCard}>
+      <Image 
+        source={{ 
+          uri: booking.eventDetails.images?.[0] || 'https://picsum.photos/400/200?random=22' 
+        }} 
+        style={styles.eventImage} 
+      />
       <View style={styles.eventContent}>
         <View style={styles.eventHeader}>
-          <Text style={styles.eventTitle}>{event.title}</Text>
-          <View style={[styles.statusBadge, { backgroundColor: '#FEF3C7' }]}>
-            <Ionicons name="time" size={16} color="#F59E0B" />
-            <Text style={[styles.statusText, { color: '#F59E0B' }]}>Pending</Text>
-          </View>
+          <Text style={styles.eventTitle}>{booking.eventDetails.title}</Text>
+          {booking.status === 'pending' ? (
+            <View style={[styles.statusBadge, { backgroundColor: '#FEF3C7' }]}>
+              <Ionicons name="time" size={16} color="#F59E0B" />
+              <Text style={[styles.statusText, { color: '#F59E0B' }]}>Pending</Text>
+            </View>
+          ) : booking.status === 'payment_pending' ? (
+            <View style={[styles.statusBadge, { backgroundColor: '#F8FAFF' }]}>
+              <Ionicons name="card" size={16} color="#6366F1" />
+              <Text style={[styles.statusText, { color: '#6366F1' }]}>Payment Due</Text>
+            </View>
+          ) : null}
         </View>
         <View style={styles.eventMeta}>
           <View style={styles.metaRow}>
             <Ionicons name="calendar" size={14} color="#6B7280" />
-            <Text style={styles.metaText}>{event.date}</Text>
+            <Text style={styles.metaText}>{booking.eventDetails.date}</Text>
           </View>
           <View style={styles.metaRow}>
             <Ionicons name="location" size={14} color="#6B7280" />
-            <Text style={styles.metaText}>{event.location}</Text>
+            <Text style={styles.metaText}>{booking.eventDetails.location.name}</Text>
           </View>
         </View>
-        <Text style={styles.requestText}>Request sent on {event.requestDate}</Text>
-        <TouchableOpacity 
-          style={styles.cancelButton}
-          onPress={() => handleCancelRequest(event.id)}
-        >
-          <Text style={styles.cancelButtonText}>Cancel Request</Text>
-        </TouchableOpacity>
+        
+        {booking.status === 'pending' ? (
+          <Text style={styles.requestText}>
+            Request sent on {new Date(booking.requestedAt).toLocaleDateString()}
+          </Text>
+        ) : (
+          <Text style={styles.requestText}>
+            Approved on {booking.respondedAt ? new Date(booking.respondedAt).toLocaleDateString() : 'N/A'}
+          </Text>
+        )}
+        
+        <View style={styles.ticketInfo}>
+          <Text style={styles.ticketText}>{booking.ticketTier} - ₹{booking.price}</Text>
+        </View>
+        
+        {booking.status === 'pending' ? (
+          <TouchableOpacity 
+            style={styles.cancelButton}
+            onPress={() => handleCancelRequest(booking.id)}
+          >
+            <Text style={styles.cancelButtonText}>Cancel Request</Text>
+          </TouchableOpacity>
+        ) : booking.status === 'payment_pending' ? (
+          <View style={styles.paymentActions}>
+            <TouchableOpacity 
+              style={styles.payButton}
+              onPress={() => handlePayment(booking.id)}
+            >
+              <Ionicons name="card-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.payButtonText}>Pay ₹{booking.price}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.cancelPaymentButton}
+              onPress={() => handleCancelRequest(booking.id)}
+            >
+              <Text style={styles.cancelPaymentButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -219,10 +359,22 @@ export default function DashboardScreen() {
       <View style={styles.eventContent}>
         <View style={styles.eventHeader}>
           <Text style={styles.eventTitle}>{event.title}</Text>
-          <View style={[styles.statusBadge, { backgroundColor: '#D1FAE5' }]}>
-            <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-            <Text style={[styles.statusText, { color: '#10B981' }]}>Approved</Text>
-          </View>
+          {event.status === 'approved' ? (
+            <View style={[styles.statusBadge, { backgroundColor: '#FEF3C7' }]}>
+              <Ionicons name="checkmark" size={16} color="#D97706" />
+              <Text style={[styles.statusText, { color: '#D97706' }]}>Approved</Text>
+            </View>
+          ) : event.status === 'payment_pending' ? (
+            <View style={[styles.statusBadge, { backgroundColor: '#F8FAFF' }]}>
+              <Ionicons name="card" size={16} color="#6366F1" />
+              <Text style={[styles.statusText, { color: '#6366F1' }]}>Payment Due</Text>
+            </View>
+          ) : (
+            <View style={[styles.statusBadge, { backgroundColor: '#D1FAE5' }]}>
+              <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+              <Text style={[styles.statusText, { color: '#10B981' }]}>Confirmed</Text>
+            </View>
+          )}
         </View>
         <View style={styles.eventMeta}>
           <View style={styles.metaRow}>
@@ -234,28 +386,76 @@ export default function DashboardScreen() {
             <Text style={styles.metaText}>{event.location}</Text>
           </View>
         </View>
-        <View style={styles.actionButtons}>
-          <TouchableOpacity 
-            style={styles.qrButton}
-            onPress={() => handleShowQR(event)}
-          >
-            <Ionicons name="qr-code" size={16} color="#FFFFFF" />
-            <Text style={styles.qrButtonText}>Show QR</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.shareButton}>
-            <Ionicons name="share" size={16} color="#6366F1" />
-            <Text style={styles.shareButtonText}>Share</Text>
-          </TouchableOpacity>
-        </View>
+        
+        {(event.status === 'approved' || event.status === 'payment_pending') ? (
+          <View style={styles.actionButtons}>
+            <TouchableOpacity 
+              style={styles.payNowButton}
+              onPress={() => handlePayment(event.id)}
+            >
+              <Ionicons name="card" size={16} color="#FFFFFF" />
+              <Text style={styles.payNowButtonText}>Pay Now - ₹{event.price}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.actionButtons}>
+            <TouchableOpacity 
+              style={styles.qrButton}
+              onPress={() => handleShowQR(event)}
+            >
+              <Ionicons name="qr-code" size={16} color="#FFFFFF" />
+              <Text style={styles.qrButtonText}>Show QR</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.shareButton}>
+              <Ionicons name="share" size={16} color="#6366F1" />
+              <Text style={styles.shareButtonText}>Share</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        
+        {event.status === 'paid' && event.qrCode && (
+          <View style={styles.qrInfo}>
+            <View>
+              <Text style={styles.qrLabel}>QR Code: {event.qrCode.substring(0, 12)}...</Text>
+              <Text style={styles.validityText}>Valid for event entry</Text>
+            </View>
+          </View>
+        )}
       </View>
     </View>
   );
 
+  // Filter bookings by status
+  const pendingBookings = userBookings.filter(booking => booking.status === 'pending');
+  const approvedBookings = userBookings.filter(booking => 
+    booking.status === 'approved' || booking.status === 'payment_pending' || booking.status === 'paid'
+  );
+  const pastBookings = userBookings.filter(booking => booking.status === 'rejected' || 
+    (booking.status === 'paid' && new Date(booking.eventDetails.date) < new Date())
+  );
+
   const getTabContent = () => {
+    if (isLoading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#6366F1" />
+          <Text style={styles.loadingText}>Loading your events...</Text>
+        </View>
+      );
+    }
+
     switch (activeTab) {
       case 'past':
-        return mockPastEvents.length > 0 ? (
-          mockPastEvents.map(renderPastEventCard)
+        return pastBookings.length > 0 ? (
+          pastBookings.map(booking => renderPastEventCard({
+            id: booking.id,
+            title: booking.eventDetails.title,
+            date: booking.eventDetails.date,
+            location: booking.eventDetails.location.name,
+            image: booking.eventDetails.images?.[0] || 'https://picsum.photos/400/200?random=20',
+            status: 'attended',
+            rating: 5,
+          }))
         ) : (
           <View style={styles.emptyState}>
             <Ionicons name="calendar-outline" size={48} color="#9CA3AF" />
@@ -264,8 +464,8 @@ export default function DashboardScreen() {
           </View>
         );
       case 'pending':
-        return pendingEvents.length > 0 ? (
-          pendingEvents.map(renderPendingEventCard)
+        return pendingBookings.length > 0 ? (
+          pendingBookings.map(renderPendingEventCard)
         ) : (
           <View style={styles.emptyState}>
             <Ionicons name="time-outline" size={48} color="#9CA3AF" />
@@ -274,8 +474,19 @@ export default function DashboardScreen() {
           </View>
         );
       case 'live':
-        return mockLiveEvents.length > 0 ? (
-          mockLiveEvents.map(renderLiveEventCard)
+        return approvedBookings.length > 0 ? (
+          approvedBookings.map(booking => renderLiveEventCard({
+            id: booking.id,
+            title: booking.eventDetails.title,
+            date: booking.eventDetails.date,
+            time: booking.eventDetails.time,
+            location: booking.eventDetails.location.name,
+            image: booking.eventDetails.images?.[0] || 'https://picsum.photos/400/200?random=24',
+            status: booking.status, // Pass actual status (payment_pending or paid)
+            qrCode: booking.qrCode || null,
+            price: booking.price,
+            ticketTier: booking.ticketTier,
+          }))
         ) : (
           <View style={styles.emptyState}>
             <Ionicons name="ticket-outline" size={48} color="#9CA3AF" />
@@ -298,9 +509,9 @@ export default function DashboardScreen() {
 
       {/* Tabs */}
       <View style={styles.tabContainer}>
-        {renderTabButton('live', 'Live', mockLiveEvents.length)}
-        {renderTabButton('pending', 'Pending', pendingEvents.length)}
-        {renderTabButton('past', 'Past', mockPastEvents.length)}
+        {renderTabButton('live', 'Live', approvedBookings.length)}
+        {renderTabButton('pending', 'Pending', pendingBookings.length)}
+        {renderTabButton('past', 'Past', pastBookings.length)}
       </View>
 
       {/* Content */}
@@ -536,6 +747,30 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     fontWeight: '600',
   },
+  ticketInfo: {
+    backgroundColor: '#F3F4F6',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    marginBottom: 8,
+    alignSelf: 'flex-start',
+  },
+  ticketText: {
+    fontSize: 12,
+    color: '#374151',
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginTop: 16,
+  },
   actionButtons: {
     flexDirection: 'row',
     marginTop: 12,
@@ -677,5 +912,54 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  // Payment styles
+  paymentActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  payButton: {
+    flex: 2,
+    backgroundColor: '#6366F1',
+    paddingVertical: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  payButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  cancelPaymentButton: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelPaymentButtonText: {
+    color: '#6B7280',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  // Live event pay now button
+  payNowButton: {
+    backgroundColor: '#6366F1',
+    paddingVertical: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+  },
+  payNowButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
   },
 });
