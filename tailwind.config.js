@@ -11,7 +11,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // HYN Brand Colors - White Background Black Text Theme
+        // Clique Brand Colors - White Background Black Text Theme
         primary: '#000000', // Black
         accent: '#374151', // Dark Gray
         bg: '#FFFFFF', // Pure White

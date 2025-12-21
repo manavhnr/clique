@@ -140,6 +140,10 @@ export default function DashboardScreen() {
     setShowQRModal(true);
   };
 
+  const handleChatPress = () => {
+    Alert.alert('Chat Feature', 'Chat will be added soon!');
+  };
+
   const handleCancelRequest = async (requestId: string) => {
     Alert.alert(
       'Cancel Request',
@@ -501,10 +505,16 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
+      {/* Header with Chat Icon */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Events</Text>
-        <Text style={styles.headerSubtitle}>Manage your event bookings</Text>
+        <Text style={styles.headerTitle}>Clique</Text>
+        <TouchableOpacity 
+          style={styles.chatButton}
+          onPress={handleChatPress}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="chatbubble-outline" size={24} color="#6366F1" />
+        </TouchableOpacity>
       </View>
 
       {/* Tabs */}
@@ -583,20 +593,24 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   header: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: '#E5E7EB',
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 4,
+    color: '#000000',
   },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
+  chatButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
   },
   tabContainer: {
     flexDirection: 'row',

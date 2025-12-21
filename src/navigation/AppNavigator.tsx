@@ -24,6 +24,10 @@ import HostApplicationScreen from '../screens/HostApplicationScreen';
 import HostDashboardScreen from '../screens/HostDashboardScreen';
 import CreateEventScreen from '../screens/CreateEventScreen';
 import AttendeesListScreen from '../screens/AttendeesListScreen';
+import EventPhotoDashboard from '../screens/EventPhotoDashboard';
+import ChatListScreen from '../screens/ChatListScreen';
+import ChatScreen from '../screens/ChatScreen';
+import FindPeopleScreen from '../screens/FindPeopleScreen';
 
 export type RootStackParamList = {
   Welcome: undefined;
@@ -41,13 +45,32 @@ export type RootStackParamList = {
   CreateEvent: { eventId?: string; mode?: 'create' | 'edit' };
   UserProfileView: { userId: string; userName?: string };
   AttendeesList: { eventId: string; eventTitle?: string };
+  EventPhotoDashboard: { 
+    eventId: string; 
+    eventTitle: string; 
+    totalPhotos: number; 
+    totalContributors: number;
+  };
+  ChatList: undefined;
+  Chat: {
+    conversationId: string;
+    otherUserId: string;
+    otherUserName: string;
+    otherUserAvatar?: string;
+  };
+  FindPeople: {
+    existingConversationUserIds?: string[];
+  };
 };
 
 export type MainTabParamList = {
   Home: undefined;
   Discover: undefined;
   Dashboard: undefined;
-  Account: undefined;
+  Account: {
+    userId?: string;
+    userName?: string;
+  };
 };
 
 const RootStack = createStackNavigator<RootStackParamList>();
@@ -110,13 +133,13 @@ const MainTabNavigator = React.memo(function MainTabNavigator() {
       <MainTab.Screen 
         name="Home" 
         component={HomeScreen} 
-        options={{ title: 'Home' }}
+        options={{ headerShown: false }}
       />
       <MainTab.Screen 
         name="Discover" 
         component={DiscoverScreen}
         options={{ 
-          title: 'Discover Events',
+          headerShown: false,
           tabBarLabel: 'Discover'
         }}
       />
@@ -124,18 +147,26 @@ const MainTabNavigator = React.memo(function MainTabNavigator() {
         name="Dashboard" 
         component={DashboardScreen}
         options={{ 
-          title: 'My Events',
+          headerShown: false,
           tabBarLabel: 'My Events'
         }}
       />
       <MainTab.Screen 
         name="Account" 
         component={AccountScreen}
-        options={{ title: 'Account' }}
+        options={({ route }) => {
+          const params = route.params as { userId?: string; userName?: string } | undefined;
+          return {
+            title: params?.userId ? params.userName || 'Profile' : 'Profile',
+            headerShown: false
+          };
+        }}
       />
       </MainTab.Navigator>
   );
-});export default function AppNavigator() {
+});
+
+export default function AppNavigator() {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
@@ -241,6 +272,34 @@ const MainTabNavigator = React.memo(function MainTabNavigator() {
           <RootStack.Screen 
             name="AttendeesList" 
             component={AttendeesListScreen}
+            options={{ 
+              headerShown: false,
+            }}
+          />
+          <RootStack.Screen 
+            name="EventPhotoDashboard" 
+            component={EventPhotoDashboard}
+            options={{ 
+              headerShown: false,
+            }}  
+          />
+          <RootStack.Screen 
+            name="ChatList" 
+            component={ChatListScreen}
+            options={{ 
+              headerShown: false,
+            }}
+          />
+          <RootStack.Screen 
+            name="Chat" 
+            component={ChatScreen}
+            options={{ 
+              headerShown: false,
+            }}
+          />
+          <RootStack.Screen 
+            name="FindPeople" 
+            component={FindPeopleScreen}
             options={{ 
               headerShown: false,
             }}

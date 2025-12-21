@@ -9,9 +9,11 @@ import './global.css';
 
 // Import providers and screens
 import { AuthProvider } from './src/contexts/AuthContext';
+import { NotificationProvider } from './src/contexts/NotificationContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import { testFirebaseConnection } from './src/utils/firebaseTest';
 import { setupFirestoreData } from './src/utils/setupFirestore';
+import './src/utils/createDemoData'; // This will auto-create demo posts
 
 const Stack = createStackNavigator();
 
@@ -39,10 +41,12 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
-        <NavigationContainer>
-          <StatusBar style="dark" backgroundColor="#FFFFFF" />
-          <AppNavigator />
-        </NavigationContainer>
+        <NotificationProvider>
+          <NavigationContainer>
+            <StatusBar style="dark" backgroundColor="#FFFFFF" />
+            <AppNavigator />
+          </NavigationContainer>
+        </NotificationProvider>
       </AuthProvider>
     </GestureHandlerRootView>
   );

@@ -308,7 +308,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const demoUser: AuthUser = {
           id: `demo_${Date.now()}`,
           phoneNumber,
-          email: 'demo@hyn.com',
+          email: 'demo@clique.com',
           username: `user_${Date.now()}`,
           name: 'Demo User',
           age: 25,
@@ -316,7 +316,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           socialActivityLevel: 'frequently',
           isProfileComplete: true,
           isVerified: true,
-          isHost: false,
+          isHost: true,
           createdAt: new Date().toISOString(),
         };
         
@@ -363,7 +363,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           socialActivityLevel: data.socialActivityLevel,
           isProfileComplete: true,
           isVerified: true,
-          isHost: false,
+          isHost: true,
           createdAt: new Date().toISOString(),
         };
         

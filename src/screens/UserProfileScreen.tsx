@@ -6,14 +6,17 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { DEFAULT_AVATAR } from '../constants/images';
 
 export default function ProfileScreen() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigation = useNavigation<any>();
 
   const getSocialActivityLabel = (level?: string) => {
     switch (level) {
@@ -207,9 +210,15 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Edit Profile Button */}
+        {/* Action Buttons */}
         <View style={styles.section}>
-          <TouchableOpacity style={styles.editButton}>
+          <TouchableOpacity 
+            style={styles.editButton}
+            onPress={() => {
+              console.log('Edit Profile button pressed');
+              navigation.navigate('EditProfile');
+            }}
+          >
             <Ionicons name="create-outline" size={20} color="#FFFFFF" />
             <Text style={styles.editButtonText}>Edit Profile</Text>
           </TouchableOpacity>
@@ -405,6 +414,24 @@ const styles = StyleSheet.create({
     color: '#10B981',
     fontWeight: '500',
     marginLeft: 4,
+  },
+  
+  hostDashboardButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#8B5CF6',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  
+  hostDashboardButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginLeft: 8,
   },
   
   editButton: {

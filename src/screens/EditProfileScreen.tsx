@@ -209,7 +209,7 @@ export default function EditProfileScreen() {
             <View style={styles.privacyInfo}>
               <Text style={styles.privacyTitle}>Show activity status</Text>
               <Text style={styles.privacySubtitle}>
-                Let others see when you're active on HYN
+                Let others see when you're active on Clique
               </Text>
             </View>
             <TouchableOpacity style={styles.privacyToggle}>

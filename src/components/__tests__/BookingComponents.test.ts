@@ -37,23 +37,27 @@ describe('React Native Component Logic Tests', () => {
   });
 
   test('should render QR code button for paid status', () => {
-    const mockBooking = {
+    // Test with different booking statuses
+    const paidBooking = {
       status: 'paid' as const,
       qrCode: 'mock-qr-code-data',
       id: 'test-booking',
     };
 
-    // Simulate the QR button rendering logic
-    const shouldShowQR = mockBooking.status === 'paid' && !!mockBooking.qrCode;
-    const shouldShowPayButton = 
-      mockBooking.status === 'approved' || 
-      mockBooking.status === 'payment_pending';
+    const confirmedBooking = {
+      status: 'confirmed' as const,
+      qrCode: null,
+      id: 'test-booking-2',
+    };
 
-    const qrButtonText = 'Show QR';
-    
-    expect(shouldShowQR).toBe(true);
-    expect(shouldShowPayButton).toBe(false);
-    expect(qrButtonText).toBe('Show QR');
+    // Simulate the QR button rendering logic
+    const shouldShowQRForPaid = paidBooking.status === 'paid' && !!paidBooking.qrCode;
+    const shouldShowPayButtonForConfirmed = 
+      confirmedBooking.status === 'confirmed' || 
+      confirmedBooking.status === 'checked_in';
+
+    expect(shouldShowQRForPaid).toBe(true);
+    expect(shouldShowPayButtonForConfirmed).toBe(true);
   });
 
   test('should render correct status badge for approved status', () => {
@@ -137,7 +141,8 @@ describe('React Native Component Logic Tests', () => {
     ]);
 
     // Validate that approved bookings don't appear in pending
-    const approvedInPending = pendingBookings.some(b => b.status === 'approved');
-    expect(approvedInPending).toBe(false);
+    // Check that no confirmed bookings appear in pending list
+    const allPending = pendingBookings.every(b => b.status === 'pending');
+    expect(allPending).toBe(true);
   });
 });

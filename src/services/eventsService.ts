@@ -12,10 +12,13 @@ import {
   orderBy, 
   limit,
   onSnapshot,
-  Timestamp 
+  Timestamp,
+  increment 
 } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { BookingRequest, UserBooking } from '../types/booking';
+import { Event, EventPost, EventPhotoCollage, COLLECTIONS } from '../types/events';
+import EventPostService from './eventPostService';
 import { DEFAULT_AVATAR } from '../constants/images';
 
 export interface EventData {
@@ -64,6 +67,9 @@ export interface EventData {
   terms?: string;
   createdAt: Date;
   updatedAt: Date;
+  // Photo collage integration
+  totalPhotos?: number;
+  photoCollageId?: string;
 }
 
 export interface CreateEventData {
@@ -1047,7 +1053,7 @@ class EventsService {
       }
 
       // Generate QR code only after successful payment
-      const qrCode = `HYN-${requestData.eventId}-${requestData.userId}-${Date.now()}`;
+      const qrCode = `CLIQUE-${requestData.eventId}-${requestData.userId}-${Date.now()}`;
 
       // Update booking to paid status with QR code
       await updateDoc(requestRef, {
@@ -1254,7 +1260,8 @@ class EventsService {
           location: {
             name: "Convention Center",
             address: "123 Tech Street",
-            city: "San Francisco"
+            city: "San Francisco",
+            coordinates: { lat: 37.7749, lng: -122.4194 }
           },
           pricing: {
             early: { price: 500, label: "Early Bird", available: true },
@@ -1285,6 +1292,7 @@ class EventsService {
           tags: ["Technology", "AI", "Blockchain"],
           status: 'published' as const,
           reviews: { rating: 4.8, count: 0 },
+          totalPhotos: 0,
           createdAt: new Date(),
           updatedAt: new Date()
         },
@@ -1298,7 +1306,8 @@ class EventsService {
           location: {
             name: "Central Park",
             address: "456 Music Avenue", 
-            city: "Mumbai"
+            city: "Mumbai",
+            coordinates: { lat: 19.0760, lng: 72.8777 }
           },
           pricing: {
             regular: { price: 2500, label: "General Admission", available: true },
@@ -1328,6 +1337,7 @@ class EventsService {
           tags: ["Music", "Festival", "Outdoor"],
           status: 'published' as const,
           reviews: { rating: 4.9, count: 0 },
+          totalPhotos: 0,
           createdAt: new Date(),
           updatedAt: new Date()
         }
@@ -1340,6 +1350,103 @@ class EventsService {
       console.log('✅ Sample events created successfully');
     } catch (error) {
       console.error('❌ Error creating sample events:', error);
+    }
+  }
+
+  // Photo Collage Integration Methods
+
+  // Get event feed for homepage (integrates posts with events)
+  async getEventFeedForHome(userId?: string, lastPostId?: string, limitCount: number = 20): Promise<{
+    posts: EventPost[];
+    hasMore: boolean;
+    nextCursor?: string;
+  }> {
+    return EventPostService.getEventFeed(userId, lastPostId, limitCount);
+  }
+
+  // Get photo collage for an event
+  async getEventPhotoCollage(eventId: string): Promise<{
+    collage: EventPhotoCollage;
+    photos: any[];
+    contributors: any[];
+  } | null> {
+    return EventPostService.getEventPhotoCollage(eventId);
+  }
+
+  // Create post with photos for an event
+  async createEventPost(
+    userId: string,
+    eventId: string,
+    content: { text: string; hashtags: string[]; mentions: string[] },
+    mediaFiles: File[] = []
+  ): Promise<string> {
+    return EventPostService.createEventPost(userId, eventId, content, mediaFiles);
+  }
+
+  // Like/unlike a post
+  async togglePostLike(postId: string, userId: string): Promise<void> {
+    return EventPostService.togglePostLike(postId, userId);
+  }
+
+  // Like/unlike a photo in collage
+  async togglePhotoLike(photoId: string, userId: string): Promise<void> {
+    return EventPostService.togglePhotoLike(photoId, userId);
+  }
+
+  // Get event statistics including photo counts
+  async getEventStatsWithPhotos(eventId: string): Promise<{
+    totalPhotos: number;
+    totalContributors: number;
+    totalLikes: number;
+    totalPosts: number;
+    totalBookings: number;
+    capacity: { total: number; booked: number; remaining: number };
+  }> {
+    try {
+      const [photoStats, event] = await Promise.all([
+        EventPostService.getEventStats(eventId),
+        this.getEventById(eventId)
+      ]);
+
+      return {
+        ...photoStats,
+        totalBookings: event?.capacity.booked || 0,
+        capacity: event?.capacity || { total: 0, booked: 0, remaining: 0 }
+      };
+    } catch (error) {
+      console.error('Error getting event stats with photos:', error);
+      return {
+        totalPhotos: 0,
+        totalContributors: 0,
+        totalLikes: 0,
+        totalPosts: 0,
+        totalBookings: 0,
+        capacity: { total: 0, booked: 0, remaining: 0 }
+      };
+    }
+  }
+
+  // Mark event as completed and enable photo sharing
+  async markEventCompleted(eventId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const result = await this.updateEventStatus(eventId, 'completed');
+      
+      if (result.success) {
+        // Initialize photo collage for the event
+        const event = await this.getEventById(eventId);
+        if (event) {
+          // Photo collage will be created automatically when first photo is added
+          console.log(`✅ Event ${eventId} marked as completed, photo sharing enabled`);
+        }
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Error marking event as completed:', error);
+      return {
+        success: false,
+        message: 'Failed to mark event as completed'
+      };
     }
   }
 }

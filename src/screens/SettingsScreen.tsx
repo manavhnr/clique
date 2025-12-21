@@ -10,12 +10,15 @@ import {
   Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotifications } from '../contexts/NotificationContext';
 
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
   const { user, logout } = useAuth();
+  const { sendLocalNotification, expoPushToken, isLoading, error } = useNotifications();
   
   // Settings states
   const [pushNotifications, setPushNotifications] = useState(true);
@@ -51,6 +54,38 @@ export default function SettingsScreen() {
         },
       ]
     );
+  };
+
+  const handleTestNotification = async () => {
+    try {
+      console.log('Attempting to send test notification...');
+      
+      // Check permissions first
+      const { status } = await Notifications.getPermissionsAsync();
+      console.log('Current notification permissions:', status);
+      
+      if (status !== 'granted') {
+        console.log('Requesting notification permissions...');
+        const { status: newStatus } = await Notifications.requestPermissionsAsync();
+        console.log('New notification permissions:', newStatus);
+        
+        if (newStatus !== 'granted') {
+          Alert.alert('Permission Required', 'Please allow notifications in your device settings to receive test notifications.');
+          return;
+        }
+      }
+      
+      const notificationId = await sendLocalNotification({
+        title: 'Test Notification',
+        body: 'This is a test notification from Clique!',
+        data: { type: 'test' },
+      });
+      console.log('Test notification sent successfully with ID:', notificationId);
+      Alert.alert('Success', 'Test notification sent! You should see it as a banner or in your notification center.');
+    } catch (error) {
+      console.error('Test notification error:', error);
+      Alert.alert('Error', `Failed to send test notification: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   };
 
   const SettingItem = ({ 
@@ -126,7 +161,7 @@ export default function SettingsScreen() {
             />
           )}
 
-          {/* Show "Host Dashboard" if user is already a host */}
+          {/* Show "Host Dashboard" option if user is already a host */}
           {user && user.isHost && (
             <SettingItem
               icon="storefront"
@@ -190,6 +225,61 @@ export default function SettingsScreen() {
             onValueChange={setEventReminders}
             type="switch"
           />
+          
+          <SettingItem
+            icon="send"
+            title="Test Notification"
+            subtitle="Send a test notification to verify setup"
+            onPress={handleTestNotification}
+          />
+          
+          <SettingItem
+            icon="flash"
+            title="Test Immediate Alert"
+            subtitle="Test notification with different settings"
+            onPress={async () => {
+              try {
+                console.log('Testing immediate notification...');
+                const id = await Notifications.scheduleNotificationAsync({
+                  content: {
+                    title: '🎉 Clique Test',
+                    body: 'This notification should appear immediately!',
+                    sound: true,
+                    priority: Notifications.AndroidNotificationPriority.HIGH,
+                    vibrate: [0, 250, 250, 250],
+                  },
+                  trigger: null,
+                });
+                console.log('Immediate notification scheduled:', id);
+                Alert.alert('Sent!', 'Check your notification area for the test notification.');
+              } catch (error) {
+                console.error('Immediate notification error:', error);
+                Alert.alert('Error', `Failed: ${error instanceof Error ? error.message : 'Unknown'}`);
+              }
+            }}
+          />
+          
+          {/* Debug info */}
+          <View style={[styles.settingItem, { backgroundColor: '#F8F9FA' }]}>
+            <View style={styles.settingLeft}>
+              <View style={styles.settingIconContainer}>
+                <Ionicons name="information-circle" size={18} color="#6B7280" />
+              </View>
+              <View style={styles.settingText}>
+                <Text style={styles.settingTitle}>Notification Status</Text>
+                <Text style={styles.settingSubtitle}>
+                  {isLoading ? 'Loading...' : 
+                   error ? `Error: ${error}` : 
+                   expoPushToken ? 'Push notifications ready' : 'Local notifications only'}
+                </Text>
+                {expoPushToken && (
+                  <Text style={[styles.settingSubtitle, { fontSize: 10, marginTop: 4 }]}>
+                    Token: {expoPushToken.substring(0, 20)}...
+                  </Text>
+                )}
+              </View>
+            </View>
+          </View>
         </View>
 
         {/* App Settings */}
@@ -277,7 +367,7 @@ export default function SettingsScreen() {
 
         {/* App Info */}
         <View style={styles.appInfo}>
-          <Text style={styles.appVersion}>HYN App Version 1.0.0</Text>
+          <Text style={styles.appVersion}>Clique App Version 1.0.0</Text>
           <Text style={styles.buildNumber}>Build 2025.11.06</Text>
         </View>
       </ScrollView>

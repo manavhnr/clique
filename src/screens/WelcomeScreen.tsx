@@ -19,9 +19,9 @@ export default function WelcomeScreen() {
         <View style={styles.illustrationContainer}>
           {/* You can replace this with an actual illustration/logo */}
           <View style={styles.logoPlaceholder}>
-            <Text style={styles.logoText}>HYN</Text>
+            <Text style={styles.logoText}>Clique</Text>
           </View>
-          <Text style={styles.appName}>HYN!</Text>
+          <Text style={styles.appName}>Clique!</Text>
           <Text style={styles.tagline}>
             Where every thought finds a home and{'\n'}every image tells a story.
           </Text>

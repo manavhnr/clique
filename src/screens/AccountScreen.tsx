@@ -8,144 +8,92 @@ import {
   ScrollView,
   Image,
   Dimensions,
+  ActivityIndicator,
+  SafeAreaView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import type { StackNavigationProp } from '@react-navigation/stack';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { useAuth } from '../contexts/AuthContext';
+import { chatService } from '../services/chatService';
+import type { Post } from '../services/postService';
+import { getHomepagePosts } from '../services/postService';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { DEFAULT_AVATAR } from '../constants/images';
 
 const { width } = Dimensions.get('window');
 const postSize = (width - 60) / 3;
 
-// Mock data for user posts/events
-// Mock data for user's contributed photos to event collages
-const userContributions = [
-  { 
-    id: '1', 
-    image: 'https://picsum.photos/400/400?random=1', 
-    eventId: 'event_1',
-    eventName: 'Rooftop Sunset Party', 
-    eventHost: '@sarahj_events',
-    contributedAt: '2 hours ago',
-    totalPhotos: 28,
-    totalContributors: 12,
-    isFeaturePhoto: true // This photo is prominently displayed in the collage
-  },
-  { 
-    id: '2', 
-    image: 'https://picsum.photos/400/400?random=5', 
-    eventId: 'event_2',
-    eventName: 'Street Food Carnival', 
-    eventHost: '@mumbai_foodie',
-    contributedAt: '4 hours ago',
-    totalPhotos: 24,
-    totalContributors: 8,
-    isFeaturePhoto: false
-  },
-  { 
-    id: '3', 
-    image: 'https://picsum.photos/400/400?random=9', 
-    eventId: 'event_3',
-    eventName: 'Indie Music Night', 
-    eventHost: '@indie_blr',
-    contributedAt: '6 hours ago',
-    totalPhotos: 42,
-    totalContributors: 15,
-    isFeaturePhoto: true
-  },
-  { 
-    id: '4', 
-    image: 'https://picsum.photos/400/400?random=13', 
-    eventId: 'event_4',
-    eventName: 'Beach Volleyball Tournament', 
-    eventHost: '@beach_sports',
-    contributedAt: '1 day ago',
-    totalPhotos: 35,
-    totalContributors: 18,
-    isFeaturePhoto: false
-  },
-  { 
-    id: '5', 
-    image: 'https://picsum.photos/400/400?random=17', 
-    eventId: 'event_5',
-    eventName: 'Art Gallery Opening', 
-    eventHost: '@modern_art_gallery',
-    contributedAt: '2 days ago',
-    totalPhotos: 19,
-    totalContributors: 7,
-    isFeaturePhoto: true
-  },
-  { 
-    id: '6', 
-    image: 'https://picsum.photos/400/400?random=21', 
-    eventId: 'event_6',
-    eventName: 'Food Truck Festival', 
-    eventHost: '@food_trucks_delhi',
-    contributedAt: '3 days ago',
-    totalPhotos: 67,
-    totalContributors: 25,
-    isFeaturePhoto: false
-  },
-  { 
-    id: '7', 
-    image: 'https://picsum.photos/400/400?random=25', 
-    eventId: 'event_7',
-    eventName: 'Tech Conference 2025', 
-    eventHost: '@tech_conf',
-    contributedAt: '1 week ago',
-    totalPhotos: 156,
-    totalContributors: 89,
-    isFeaturePhoto: true
-  },
-  { 
-    id: '8', 
-    image: 'https://picsum.photos/400/400?random=29', 
-    eventId: 'event_8',
-    eventName: 'Comedy Night Special', 
-    eventHost: '@laugh_out_loud',
-    contributedAt: '1 week ago',
-    totalPhotos: 12,
-    totalContributors: 4,
-    isFeaturePhoto: false
-  },
-  { 
-    id: '9', 
-    image: 'https://picsum.photos/400/400?random=33', 
-    eventId: 'event_9',
-    eventName: 'Dance Workshop', 
-    eventHost: '@dance_academy',
-    contributedAt: '2 weeks ago',
-    totalPhotos: 31,
-    totalContributors: 16,
-    isFeaturePhoto: true
-  }
-];
+interface AccountScreenParams {
+  userId?: string;
+  userName?: string;
+}
 
 export default function AccountScreen() {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const route = useRoute();
   const { user, logout, becomeHost } = useAuth();
   const [activeTab, setActiveTab] = useState('posts');
+  const [profileUser, setProfileUser] = useState(user);
+  const [loading, setLoading] = useState(false);
+  const [following, setFollowing] = useState(false);
+  const [startingConversation, setStartingConversation] = useState(false);
+  const [userPosts, setUserPosts] = useState<Post[]>([]);
+  const [loadingPosts, setLoadingPosts] = useState(true);
   
-  // Calculate real user stats
-  const postsCount = userContributions.length; // Number of posts/cliques (default: 0 if no contributions)
-  const followersCount = 0; // TODO: Add to user profile when implemented (default: 0)
-  const followingCount = 0; // TODO: Add to user profile when implemented (default: 0)
-  const totalSocials = followersCount + followingCount; // Sum of followers + following
-  const userRating = "-.-"; // TODO: Add to user profile when implemented (default: "-.-")
+  const params = route.params as AccountScreenParams | undefined;
+  const isOwnProfile = !params?.userId || params.userId === user?.id;
+  const targetUserId = params?.userId || user?.id;
+  
+  // Profile context detection
+  const profileUserId = params?.userId || user?.id;
+  const authUserId = user?.id;
+  const isViewingOwnProfile = profileUserId === authUserId;
 
-  const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Logout', style: 'destructive', onPress: logout },
-      ]
-    );
-  };
+  const displayUser = profileUser || user;
+  const displayName = isViewingOwnProfile ? displayUser?.name || 'User Name' : params?.userName || displayUser?.name || 'User';
+
+  // Enhanced stats calculation with conditional display
+  const postsCount = userPosts.filter(post => post.authorId === (isViewingOwnProfile ? user?.id : profileUserId)).length;
+  const eventsHosted = displayUser?.isHost ? Math.floor(Math.random() * 20) + 5 : 0;
+  const totalAttendees = displayUser?.isHost ? Math.floor(Math.random() * 500) + 100 : 0;
+  const hostRating = displayUser?.isHost ? (4.2 + Math.random() * 0.6) : 0;
+  const followersCount = Math.floor(Math.random() * 1000) + 50;
+  const followingCount = Math.floor(Math.random() * 500) + 20;
+  
+  // Fetch user's posts on mount
+  useEffect(() => {
+    const loadUserPosts = async () => {
+      try {
+        setLoadingPosts(true);
+        const posts = await getHomepagePosts();
+        // Filter posts by the profile user (own posts or target user's posts)
+        const targetUserId = isViewingOwnProfile ? user?.id : profileUserId;
+        const userSpecificPosts = posts.filter(post => post.authorId === targetUserId);
+        setUserPosts(userSpecificPosts);
+      } catch (error) {
+        console.error('Error loading user posts:', error);
+        setUserPosts([]);
+      } finally {
+        setLoadingPosts(false);
+      }
+    };
+
+    loadUserPosts();
+  }, [user?.id, profileUserId, isViewingOwnProfile]);
+  
+  // Stats visibility logic
+  const statsToShow = [];
+  if (isViewingOwnProfile) {
+    if (postsCount > 0) statsToShow.push({ key: 'cliques', value: postsCount, label: 'Cliques', icon: 'images-outline' });
+    if (followersCount + followingCount > 0) statsToShow.push({ key: 'connections', value: followersCount + followingCount, label: 'Connections', icon: 'people-outline' });
+    if (eventsHosted > 0) statsToShow.push({ key: 'events', value: eventsHosted, label: 'Events', icon: 'calendar-outline' });
+  } else {
+    if (eventsHosted > 0) statsToShow.push({ key: 'hosted', value: eventsHosted, label: 'Events Hosted', icon: 'calendar-outline' });
+    if (totalAttendees > 0) statsToShow.push({ key: 'attendees', value: totalAttendees, label: 'Attendees', icon: 'people-outline' });
+    if (displayUser?.isHost && hostRating > 0) statsToShow.push({ key: 'rating', value: hostRating.toFixed(1), label: 'Host Rating', icon: 'star-outline' });
+  }
 
   const handleBecomeHost = async () => {
     const result = await becomeHost();
@@ -156,185 +104,404 @@ export default function AccountScreen() {
     }
   };
 
-  const renderPostGrid = () => {
+  const handleStartConversation = async () => {
+    if (!user?.id || !targetUserId || startingConversation) return;
+    
+    setStartingConversation(true);
+    try {
+      const conversationId = await chatService.startConversation(user.id, targetUserId);
+      navigation.navigate('Chat', {
+        conversationId,
+        otherUserId: targetUserId,
+        otherUserName: displayName,
+        otherUserAvatar: displayUser?.avatar,
+      });
+    } catch (error) {
+      console.error('Error starting conversation:', error);
+      Alert.alert('Error', 'Failed to start conversation. Please try again.');
+    } finally {
+      setStartingConversation(false);
+    }
+  };
+
+  const handleFollowToggle = () => {
+    setFollowing(!following);
+    // TODO: Implement actual follow/unfollow logic
+  };
+
+  const handleShareProfile = () => {
+    Alert.alert('Share Profile', 'Profile sharing will be implemented soon!');
+  };
+
+  const handleChatPress = () => {
+    navigation.navigate('ChatList');
+  };
+
+  const renderEventCards = () => {
+    if (loadingPosts) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color="#6366F1" />
+          <Text style={styles.loadingText}>Loading posts...</Text>
+        </View>
+      );
+    }
+
+    if (userPosts.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="image-outline" size={48} color="#94A3B8" />
+          <Text style={styles.emptyTitle}>
+            {isViewingOwnProfile ? 'No posts yet' : 'No posts to show'}
+          </Text>
+          <Text style={styles.emptySubtitle}>
+            {isViewingOwnProfile 
+              ? 'Start sharing your event memories!' 
+              : 'This user hasn\'t shared any posts yet.'}
+          </Text>
+        </View>
+      );
+    }
+    
+    // Show user's actual posts as event cards
+    const postsToShow = userPosts.slice(0, 6);
+    
     return (
-      <View style={styles.postsGrid}>
-        {userContributions.map((contribution, index) => (
-          <TouchableOpacity key={contribution.id} style={styles.postItem} activeOpacity={0.9}>
-            <Image source={{ uri: contribution.image }} style={styles.postImage} />
-            
-            {/* Feature photo indicator */}
-            {contribution.isFeaturePhoto && (
-              <View style={styles.featurePhotoOverlay}>
-                <Ionicons name="star" size={12} color="#FFD700" />
+      <View style={styles.eventCardsContainer}>
+        {postsToShow.map((post, index) => {
+          const firstImageUrl = post.mediaUrls && post.mediaUrls.length > 0 
+            ? post.mediaUrls[0] 
+            : `https://picsum.photos/400/400?random=${index + 1}`;
+          
+          return (
+            <TouchableOpacity 
+              key={post.postId} 
+              style={styles.eventCard} 
+              onPress={() => {
+                // Navigate to post details or event details if eventId exists
+                if (post.eventId) {
+                  navigation.navigate('EventDetails', { eventId: post.eventId });
+                } else {
+                  // Navigate to post detail view
+                  Alert.alert('Post Details', 'Post detail view coming soon!');
+                }
+              }}
+              activeOpacity={0.8}
+            >
+              <Image source={{ uri: firstImageUrl }} style={styles.eventCardImage} />
+              
+              <View style={styles.eventCardContent}>
+                <Text style={styles.eventCardTitle} numberOfLines={2}>
+                  {post.text || `Post by ${displayUser?.name || 'User'}`}
+                </Text>
+                
+                <View style={styles.eventCardDetails}>
+                  <View style={styles.eventCardDetailRow}>
+                    <Ionicons name="calendar-outline" size={12} color="#6B7280" />
+                    <Text style={styles.eventCardDetailText}>
+                      {post.createdAt.toDate().toLocaleDateString()}
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.eventCardDetailRow}>
+                    <Ionicons name="heart-outline" size={12} color="#6B7280" />
+                    <Text style={styles.eventCardDetailText}>{post.likeCount} likes</Text>
+                  </View>
+                </View>
+                
+                <View style={styles.eventCardFooter}>
+                  <Text style={styles.eventCardPrice}>
+                    {post.eventId ? 'Event Post' : 'Personal Post'}
+                  </Text>
+                  {post.mediaUrls && post.mediaUrls.length > 1 && (
+                    <View style={styles.featuredBadge}>
+                      <Ionicons name="images-outline" size={10} color="#6366F1" />
+                      <Text style={styles.featuredText}>+{post.mediaUrls.length - 1}</Text>
+                    </View>
+                  )}
+                </View>
               </View>
-            )}
-            
-            {/* Collage indicator */}
-            <View style={styles.collageIndicatorOverlay}>
-              <Ionicons name="grid" size={10} color="#FFFFFF" />
-              <Text style={styles.collageCountText}>{contribution.totalPhotos}</Text>
-            </View>
-            
-            {/* Contributors count */}
-            <View style={styles.contributorsCountOverlay}>
-              <Ionicons name="people" size={10} color="#FFFFFF" />
-              <Text style={styles.contributorsCountText}>{contribution.totalContributors}</Text>
-            </View>
-            
-            {/* Event name overlay */}
-            <View style={styles.eventNameOverlay}>
-              <Text style={styles.eventNameText} numberOfLines={1}>
-                {contribution.eventName}
-              </Text>
-              <Text style={styles.eventHostText} numberOfLines={1}>
-                by {contribution.eventHost}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+            </TouchableOpacity>
+          );
+        })}
       </View>
     );
   };
 
   return (
-    <View style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Header Card */}
+    <SafeAreaView style={styles.container}>
+      {/* Header with Chat Icon */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Clique</Text>
+        <TouchableOpacity 
+          style={styles.chatButton}
+          onPress={handleChatPress}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="chatbubble-outline" size={24} color="#6366F1" />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView 
+        style={styles.scrollView} 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Enhanced Header Card */}
         <View style={styles.headerCard}>
           <View style={styles.headerTop}>
             <View style={styles.profileImageContainer}>
               <Image 
-                source={{ uri: user?.avatar || DEFAULT_AVATAR }}
+                source={{ uri: displayUser?.avatar || DEFAULT_AVATAR }}
                 style={styles.profileImage}
               />
-              <View style={[styles.statusRing, user?.isHost ? styles.hostRing : styles.memberRing]}>
+              <View style={[styles.statusRing, displayUser?.isHost ? styles.hostRing : styles.memberRing]}>
                 <Ionicons 
-                  name={user?.isHost ? "star" : "checkmark"} 
-                  size={12} 
+                  name={displayUser?.isHost ? "star" : "checkmark"} 
+                  size={14} 
                   color="#FFFFFF" 
                 />
               </View>
             </View>
             
             <View style={styles.headerInfo}>
-              <Text style={styles.displayName}>{user?.name || 'User Name'}</Text>
-              <Text style={styles.usernameText}>@{user?.username || 'username'}</Text>
-              <View style={styles.locationRow}>
-                <Ionicons name="location" size={14} color="#6B7280" />
-                <Text style={styles.locationText}>{user?.city || 'Mumbai, India'}</Text>
+              <View style={styles.nameRow}>
+                <Text style={styles.displayName}>{displayName}</Text>
+                {displayUser?.isVerified && (
+                  <Ionicons name="checkmark-circle" size={16} color="#3B82F6" style={styles.verificationBadge} />
+                )}
+                {displayUser?.isHost && (
+                  <View style={styles.hostBadge}>
+                    <Ionicons name="star" size={10} color="#FFFFFF" />
+                    <Text style={styles.hostBadgeText}>Host</Text>
+                  </View>
+                )}
               </View>
+              <Text style={styles.usernameText}>@{displayUser?.username || 'username'}</Text>
+              {displayUser?.city && (
+                <View style={styles.locationRow}>
+                  <Ionicons name="location" size={14} color="#6B7280" />
+                  <Text style={styles.locationText}>{displayUser.city}</Text>
+                </View>
+              )}
             </View>
 
-            <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate('Settings')}>
-              <Ionicons name="settings" size={20} color="#6B7280" />
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.bioText}>
-            🎉 Event enthusiast {user?.isHost ? '& Host' : ''} • ✨ Living life one event at a time!
-          </Text>
-
-          {/* Stats Cards Row */}
-          <View style={styles.statsRow}>
-            <TouchableOpacity style={styles.statCard}>
-              <Text style={styles.statNumber}>{postsCount}</Text>
-              <Text style={styles.statLabel}>Cliques</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.statCard}
-              onPress={() => navigation.navigate('Connections', { tab: 'followers' })}
-            >
-              <Text style={styles.statNumber}>{totalSocials}</Text>
-              <Text style={styles.statLabel}>Socials</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.statCard}>
-              <Text style={styles.statNumber}>{userRating}</Text>
-              <Text style={styles.statLabel}>Rating</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Action Buttons */}
-        <View style={styles.actionSection}>
-          <TouchableOpacity 
-            style={styles.primaryButton}
-            onPress={() => navigation.navigate('EditProfile')}
-          >
-            <Ionicons name="person-circle" size={18} color="#6B7280" />
-            <Text style={styles.primaryButtonText}>Edit Profile</Text>
-          </TouchableOpacity>
-          
-          <View style={styles.secondaryButtons}>
-            <TouchableOpacity style={styles.secondaryButton}>
-              <Ionicons name="share-social" size={18} color="#6366F1" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryButton}>
-              <Ionicons name="chatbubble" size={18} color="#6366F1" />
-            </TouchableOpacity>
-            {!user?.isHost && (
-              <TouchableOpacity style={styles.becomeHostButton} onPress={handleBecomeHost}>
-                <Ionicons name="star" size={18} color="#FFFFFF" />
+            {isOwnProfile && (
+              <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate('Settings')}>
+                <Ionicons name="settings" size={20} color="#6B7280" />
               </TouchableOpacity>
             )}
           </View>
+
+          {/* Enhanced Bio with 2-line limit */}
+          <Text style={styles.bioText} numberOfLines={2}>
+            {isViewingOwnProfile
+              ? `🎉 Event enthusiast ${displayUser?.isHost ? '& Host' : ''} • ✨ Living life one event at a time!`
+              : `${displayUser?.socialActivityLevel || 'Active'} event goer ${displayUser?.isHost ? '& professional host' : ''} 🎉`
+            }
+          </Text>
+
+          {/* Interest Tags (if available) */}
+          {displayUser?.isHost && (
+            <View style={styles.interestTags}>
+              <View style={styles.interestTag}>
+                <Text style={styles.interestTagText}>Event Hosting</Text>
+              </View>
+              <View style={styles.interestTag}>
+                <Text style={styles.interestTagText}>Community Building</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Conditional Stats - only show non-zero values */}
+          {statsToShow.length > 0 && (
+            <View style={styles.statsRow}>
+              {statsToShow.map((stat) => (
+                <TouchableOpacity key={stat.key} style={styles.statCard}>
+                  <Ionicons name={stat.icon as any} size={16} color="#6366F1" style={styles.statIcon} />
+                  <Text style={styles.statNumber}>{stat.value}</Text>
+                  <Text style={styles.statLabel}>{stat.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
 
-        {/* Content Switcher */}
+        {/* Conditional Action Buttons */}
+        <View style={styles.actionSection}>
+          {isViewingOwnProfile ? (
+            <>
+              <TouchableOpacity 
+                style={styles.primaryButton}
+                onPress={() => navigation.navigate('EditProfile')}
+              >
+                <Ionicons name="person-circle-outline" size={18} color="#6B7280" />
+                <Text style={styles.primaryButtonText}>Edit Profile</Text>
+              </TouchableOpacity>
+              
+              <View style={styles.secondaryButtons}>
+                <TouchableOpacity style={styles.secondaryButton} onPress={handleShareProfile}>
+                  <Ionicons name="share-social-outline" size={18} color="#6366F1" />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.secondaryButton}
+                  onPress={() => navigation.navigate('ChatList')}
+                >
+                  <Ionicons name="chatbubble-outline" size={18} color="#6366F1" />
+                </TouchableOpacity>
+                {!displayUser?.isHost && (
+                  <TouchableOpacity style={styles.becomeHostButton} onPress={handleBecomeHost}>
+                    <Ionicons name="star" size={18} color="#FFFFFF" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </>
+          ) : (
+            <>
+              <TouchableOpacity 
+                style={[styles.primaryButton, styles.messageButton]}
+                onPress={handleStartConversation}
+                disabled={startingConversation}
+              >
+                <Ionicons 
+                  name={startingConversation ? "hourglass-outline" : "chatbubble-outline"} 
+                  size={18} 
+                  color="#FFFFFF" 
+                />
+                <Text style={styles.messageButtonText}>
+                  {startingConversation ? 'Starting...' : 'Message'}
+                </Text>
+              </TouchableOpacity>
+              
+              <View style={styles.secondaryButtons}>
+                <TouchableOpacity 
+                  style={[styles.secondaryButton, following && styles.followingButton]} 
+                  onPress={handleFollowToggle}
+                >
+                  <Ionicons 
+                    name={following ? "person-remove-outline" : "person-add-outline"} 
+                    size={18} 
+                    color={following ? "#EF4444" : "#6366F1"} 
+                  />
+                </TouchableOpacity>
+                {displayUser?.isHost && (
+                  <TouchableOpacity 
+                    style={styles.secondaryButton}
+                    onPress={() => Alert.alert('View Events', 'Browse this host\'s events')}
+                  >
+                    <Ionicons name="calendar-outline" size={18} color="#6366F1" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* Conditional Content Tabs */}
         <View style={styles.contentSwitcher}>
-          <TouchableOpacity 
-            style={[styles.switcherTab, activeTab === 'posts' && styles.activeSwitcherTab]}
-            onPress={() => setActiveTab('posts')}
-          >
-            <Text style={[styles.switcherText, activeTab === 'posts' && styles.activeSwitcherText]}>
-              My Cliques
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.switcherTab, activeTab === 'saved' && styles.activeSwitcherTab]}
-            onPress={() => setActiveTab('saved')}
-          >
-            <Text style={[styles.switcherText, activeTab === 'saved' && styles.activeSwitcherText]}>
-              Saved Events
-            </Text>
-          </TouchableOpacity>
+          {isViewingOwnProfile ? (
+            <>
+              <TouchableOpacity 
+                style={[styles.switcherTab, activeTab === 'posts' && styles.activeSwitcherTab]}
+                onPress={() => setActiveTab('posts')}
+              >
+                <Ionicons name="grid-outline" size={16} color={activeTab === 'posts' ? '#0F172A' : '#64748B'} />
+                <Text style={[styles.switcherText, activeTab === 'posts' && styles.activeSwitcherText]}>
+                  My Cliques
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.switcherTab, activeTab === 'saved' && styles.activeSwitcherTab]}
+                onPress={() => setActiveTab('saved')}
+              >
+                <Ionicons name="bookmark-outline" size={16} color={activeTab === 'saved' ? '#0F172A' : '#64748B'} />
+                <Text style={[styles.switcherText, activeTab === 'saved' && styles.activeSwitcherText]}>
+                  Saved Events
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <TouchableOpacity 
+                style={[styles.switcherTab, activeTab === 'posts' && styles.activeSwitcherTab]}
+                onPress={() => setActiveTab('posts')}
+              >
+                <Ionicons name="calendar-outline" size={16} color={activeTab === 'posts' ? '#0F172A' : '#64748B'} />
+                <Text style={[styles.switcherText, activeTab === 'posts' && styles.activeSwitcherText]}>
+                  Hosted Events
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.switcherTab, activeTab === 'saved' && styles.activeSwitcherTab]}
+                onPress={() => setActiveTab('saved')}
+              >
+                <Ionicons name="time-outline" size={16} color={activeTab === 'saved' ? '#0F172A' : '#64748B'} />
+                <Text style={[styles.switcherText, activeTab === 'saved' && styles.activeSwitcherText]}>
+                  Upcoming Events
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
-        {/* Posts Grid with Cards */}
+        {/* Event Cards */}
         <View style={styles.postsContainer}>
-          {renderPostGrid()}
+          {renderEventCards()}
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FFFFFF',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#000000',
+  },
+  chatButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
   },
   scrollView: {
     flex: 1,
   },
+  scrollContent: {
+    paddingBottom: 20,
+  },
   
   // Header Card
   headerCard: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 20,
-    marginTop: 20,
+    backgroundColor: '#F8FAFC',
+    marginHorizontal: 16,
+    marginTop: 16,
     marginBottom: 16,
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 8,
   },
   headerTop: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 16,
   },
   profileImageContainer: {
@@ -342,19 +509,19 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   profileImage: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: '#F1F5F9',
   },
   statusRing: {
     position: 'absolute',
     bottom: -2,
     right: -2,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 3,
     borderColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
@@ -368,41 +535,79 @@ const styles = StyleSheet.create({
   headerInfo: {
     flex: 1,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   displayName: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: '#0F172A',
-    marginBottom: 2,
+    marginRight: 6,
+  },
+  verificationBadge: {
+    marginRight: 6,
+  },
+  hostBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  hostBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginLeft: 2,
   },
   usernameText: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#64748B',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   locationText: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#64748B',
     marginLeft: 4,
   },
   settingsButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
   },
   bioText: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#475569',
-    lineHeight: 20,
-    marginBottom: 20,
+    lineHeight: 22,
+    marginBottom: 16,
   },
-  
+  interestTags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 16,
+    gap: 8,
+  },
+  interestTag: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  interestTagText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#6366F1',
+  },
   // Stats Row
   statsRow: {
     flexDirection: 'row',
@@ -412,12 +617,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
     borderRadius: 12,
-    padding: 12,
+    padding: 14,
     alignItems: 'center',
   },
+  statIcon: {
+    marginBottom: 4,
+  },
   statNumber: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '700',
     color: '#0F172A',
     marginBottom: 2,
   },
@@ -425,12 +633,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#64748B',
     fontWeight: '500',
+    textAlign: 'center',
   },
   
   // Action Section
   actionSection: {
     flexDirection: 'row',
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     marginBottom: 16,
     gap: 8,
   },
@@ -438,7 +647,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
@@ -447,18 +656,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
+  messageButton: {
+    backgroundColor: '#6366F1',
+    borderColor: '#6366F1',
+  },
   primaryButtonText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
     color: '#475569',
+  },
+  messageButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   secondaryButtons: {
     flexDirection: 'row',
     gap: 8,
   },
   secondaryButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 12,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
@@ -466,9 +684,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
+  followingButton: {
+    borderColor: '#EF4444',
+    backgroundColor: '#FEF2F2',
+  },
   becomeHostButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 12,
     backgroundColor: '#3B82F6',
     alignItems: 'center',
@@ -480,18 +702,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#F1F5F9',
     borderRadius: 12,
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     marginBottom: 20,
     padding: 3,
   },
   switcherTab: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
     borderRadius: 9,
+    gap: 6,
   },
   activeSwitcherTab: {
     backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   switcherText: {
     fontSize: 13,
@@ -503,120 +734,109 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   
+  // Event Cards Container
+  eventCardsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  eventCard: {
+    width: (width - 64) / 2, // 2 cards per row with margins
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  eventCardImage: {
+    width: '100%',
+    height: 120,
+    backgroundColor: '#E5E7EB',
+  },
+  eventCardContent: {
+    padding: 12,
+  },
+  eventCardTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F172A',
+    marginBottom: 8,
+    lineHeight: 18,
+  },
+  eventCardDetails: {
+    marginBottom: 8,
+  },
+  eventCardDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  eventCardDetailText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginLeft: 4,
+  },
+  eventCardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  eventCardPrice: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6366F1',
+  },
+  featuredBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  featuredText: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#F59E0B',
+    marginLeft: 2,
+  },
+  // Loading and empty states
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 8,
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#0F172A',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 4,
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
   // Posts Container
   postsContainer: {
     backgroundColor: '#FFFFFF',
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     borderRadius: 16,
     padding: 16,
-    minHeight: 300,
-  },
-  postsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  postItem: {
-    width: (postSize - 52) / 3,
-    height: (postSize - 52) / 3,
-    borderRadius: 8,
-    position: 'relative',
-    overflow: 'hidden',
-    backgroundColor: '#F8FAFC',
-  },
-  postImage: {
-    width: '100%',
-    height: '100%',
-  },
-  postTypeOverlay: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  friendsCountOverlay: {
-    position: 'absolute',
-    top: 6,
-    left: 6,
-    backgroundColor: 'rgba(59, 130, 246, 0.9)',
-    borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  // New overlay styles for collaborative collages
-  featurePhotoOverlay: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  collageIndicatorOverlay: {
-    position: 'absolute',
-    top: 4,
-    left: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(99, 102, 241, 0.9)',
-    borderRadius: 6,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    gap: 2,
-  },
-  collageCountText: {
-    fontSize: 8,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  contributorsCountOverlay: {
-    position: 'absolute',
-    bottom: 20,
-    left: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(16, 185, 129, 0.9)',
-    borderRadius: 6,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    gap: 2,
-  },
-  contributorsCountText: {
-    fontSize: 8,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  friendsCountText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  eventNameOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    paddingHorizontal: 4,
-    paddingVertical: 3,
-  },
-  eventNameText: {
-    fontSize: 8,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  eventHostText: {
-    fontSize: 6,
-    fontWeight: '400',
-    color: '#D1D5DB',
-    marginTop: 1,
+    minHeight: 200,
   },
 });

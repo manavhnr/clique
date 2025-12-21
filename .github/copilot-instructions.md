@@ -1,7 +1,7 @@
-# HYN React Native App - Development Guide
+# Clique React Native App - Development Guide
 
 ## Project Overview
-React Native mobile application for HYN (Host Your Night) with:
+React Native mobile application for Clique with:
 - Expo framework with TypeScript
 - NativeWind for styling (matching web version themes)
 - SMS OTP authentication system

@@ -70,7 +70,7 @@ export default function LoginScreen() {
         <View style={styles.content}>
           {/* Logo and Title */}
           <View style={styles.header}>
-            <Text style={styles.logo}>HYN</Text>
+            <Text style={styles.logo}>Clique</Text>
             <Text style={styles.subtitle}>Host Your Night</Text>
             <Text style={styles.loginTitle}>Login to Your Account</Text>
             <Text style={styles.description}>

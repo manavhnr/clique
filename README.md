@@ -1,8 +1,8 @@
-# HYN React Native App
+# Clique React Native App
 
-## 🎉 Host Your Night - Mobile Edition
+## 🎉 Clique - Mobile Edition
 
-React Native mobile application for HYN (Host Your Night) platform, built with Expo and TypeScript. Experience seamless event hosting and discovery on your mobile device with the same powerful features as the web version.
+React Native mobile application for Clique platform, built with Expo and TypeScript. Experience seamless event hosting and discovery on your mobile device with the same powerful features as the web version.
 
 ## ✨ Features
 
@@ -212,7 +212,7 @@ This React Native app mirrors the Next.js web application:
 
 ## 📄 License
 
-This project is part of the HYN platform. All rights reserved.
+This project is part of the Clique platform. All rights reserved.
 
 ---
 

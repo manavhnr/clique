@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,239 +8,324 @@ import {
   SafeAreaView,
   Dimensions,
   Image,
+  RefreshControl,
+  ActivityIndicator,
+  Alert,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
+import { 
+  getHomepagePosts,
+  likePost,
+  unlikePost,
+  fetchUserLikedState,
+  createPost
+} from '../services/postService';
+import { createSamplePost } from '../utils/createSamplePost';
+import { debugPostSystem, initializeSampleData } from '../utils/debugPosts';
+import CommentBottomSheet from '../components/CommentBottomSheetNew';
+import type { Post } from '../types/posts';
 
 const { width } = Dimensions.get('window');
-
-// Mock data for Instagram-style event feed with collaborative collages
-const feedPosts = [
-  {
-    id: '1',
-    host: {
-      id: 'user_1',
-      name: 'Sarah Johnson',
-      username: 'sarahj_events',
-      avatar: 'https://picsum.photos/100/100?random=21',
-      isVerified: true
-    },
-    event: {
-      title: 'Rooftop Sunset Party 🌅',
-      description: 'What an unforgettable evening with amazing city views, craft cocktails, and live DJ sets! Perfect vibes were definitely achieved ✨ Thanks to everyone who came!',
-      date: '2024-11-13',
-      time: '6:00 PM',
-      location: 'Bandra West, Mumbai',
-      price: '₹1,500',
-      category: 'Party'
-    },
-    collage: {
-      photos: [
-        {
-          id: 'photo_1',
-          url: 'https://picsum.photos/400/400?random=1',
-          contributorId: 'user_5',
-          contributorName: 'Alex Chen',
-          contributorUsername: 'alexc_photos',
-          contributorAvatar: 'https://picsum.photos/50/50?random=25'
-        },
-        {
-          id: 'photo_2',
-          url: 'https://picsum.photos/400/400?random=2',
-          contributorId: 'user_6',
-          contributorName: 'Maya Patel',
-          contributorUsername: 'maya_captures',
-          contributorAvatar: 'https://picsum.photos/50/50?random=26'
-        },
-        {
-          id: 'photo_3',
-          url: 'https://picsum.photos/400/400?random=3',
-          contributorId: 'user_7',
-          contributorName: 'Raj Singh',
-          contributorUsername: 'raj_moments',
-          contributorAvatar: 'https://picsum.photos/50/50?random=27'
-        },
-        {
-          id: 'photo_4',
-          url: 'https://picsum.photos/400/400?random=4',
-          contributorId: 'user_8',
-          contributorName: 'Emma Wilson',
-          contributorUsername: 'emma_snaps',
-          contributorAvatar: 'https://picsum.photos/50/50?random=28'
-        }
-      ],
-      totalContributors: 12,
-      totalPhotos: 28
-    },
-    stats: {
-      likes: 247,
-      comments: 28,
-      attendees: 156
-    },
-    timePosted: '1 day ago',
-    isLiked: false,
-    isBookmarked: false
-  },
-  {
-    id: '2',
-    host: {
-      id: 'user_2',
-      name: 'Mumbai Food Tours',
-      username: 'mumbai_foodie',
-      avatar: 'https://picsum.photos/100/100?random=22',
-      isVerified: false
-    },
-    event: {
-      title: 'Street Food Carnival 🍛',
-      description: 'We explored authentic Mumbai street food with local guides! From vada pav to kulfi, we tasted it all in one amazing food walk 🥘 Such a delicious adventure!',
-      date: '2024-11-10',
-      time: '11:00 AM',
-      location: 'Connaught Place, Delhi',
-      price: '₹800',
-      category: 'Food & Drink'
-    },
-    collage: {
-      photos: [
-        {
-          id: 'photo_5',
-          url: 'https://picsum.photos/400/400?random=5',
-          contributorId: 'user_9',
-          contributorName: 'Priya Sharma',
-          contributorUsername: 'priya_foodie',
-          contributorAvatar: 'https://picsum.photos/50/50?random=29'
-        },
-        {
-          id: 'photo_6',
-          url: 'https://picsum.photos/400/400?random=6',
-          contributorId: 'user_10',
-          contributorName: 'David Kumar',
-          contributorUsername: 'david_eats',
-          contributorAvatar: 'https://picsum.photos/50/50?random=30'
-        },
-        {
-          id: 'photo_7',
-          url: 'https://picsum.photos/400/400?random=7',
-          contributorId: 'user_11',
-          contributorName: 'Lisa Brown',
-          contributorUsername: 'lisa_tastes',
-          contributorAvatar: 'https://picsum.photos/50/50?random=31'
-        },
-        {
-          id: 'photo_8',
-          url: 'https://picsum.photos/400/400?random=8',
-          contributorId: 'user_12',
-          contributorName: 'Arjun Mehta',
-          contributorUsername: 'arjun_food',
-          contributorAvatar: 'https://picsum.photos/50/50?random=32'
-        }
-      ],
-      totalContributors: 8,
-      totalPhotos: 24
-    },
-    stats: {
-      likes: 189,
-      comments: 42,
-      attendees: 89
-    },
-    timePosted: '3 days ago',
-    isLiked: true,
-    isBookmarked: true
-  },
-  {
-    id: '3',
-    host: {
-      id: 'user_3',
-      name: 'Indie Collective',
-      username: 'indie_blr',
-      avatar: 'https://picsum.photos/100/100?random=23',
-      isVerified: true
-    },
-    event: {
-      title: 'Indie Music Night 🎵',
-      description: 'We discovered fresh indie artists and emerging bands in an intimate venue. Great music, good vibes, and amazing company! 🎸 The energy was incredible!',
-      date: '2024-11-08',
-      time: '7:30 PM',
-      location: 'Koramangala, Bangalore',
-      price: '₹600',
-      category: 'Music'
-    },
-    collage: {
-      photos: [
-        {
-          id: 'photo_9',
-          url: 'https://picsum.photos/400/400?random=9',
-          contributorId: 'user_13',
-          contributorName: 'Sam Rodriguez',
-          contributorUsername: 'sam_music',
-          contributorAvatar: 'https://picsum.photos/50/50?random=33'
-        },
-        {
-          id: 'photo_10',
-          url: 'https://picsum.photos/400/400?random=10',
-          contributorId: 'user_14',
-          contributorName: 'Anita Desai',
-          contributorUsername: 'anita_vibes',
-          contributorAvatar: 'https://picsum.photos/50/50?random=34'
-        },
-        {
-          id: 'photo_11',
-          url: 'https://picsum.photos/400/400?random=11',
-          contributorId: 'user_15',
-          contributorName: 'Tom Jackson',
-          contributorUsername: 'tom_beats',
-          contributorAvatar: 'https://picsum.photos/50/50?random=35'
-        },
-        {
-          id: 'photo_12',
-          url: 'https://picsum.photos/400/400?random=12',
-          contributorId: 'user_16',
-          contributorName: 'Kavya Nair',
-          contributorUsername: 'kavya_sound',
-          contributorAvatar: 'https://picsum.photos/50/50?random=36'
-        }
-      ],
-      totalContributors: 15,
-      totalPhotos: 42
-    },
-    stats: {
-      likes: 312,
-      comments: 67,
-      attendees: 201
-    },
-    timePosted: '5 days ago',
-    isLiked: false,
-    isBookmarked: false
-  }
-];
 
 export default function HomeScreen() {
   const { user } = useAuth();
   const navigation = useNavigation<any>();
+  
+  // State management
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [userLikedPosts, setUserLikedPosts] = useState<Set<string>>(new Set());
+  
+  // Image popup state
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [imageModalVisible, setImageModalVisible] = useState(false);
+  
+  // Comments modal state
+  const [commentsModalVisible, setCommentsModalVisible] = useState(false);
+  const [selectedPostId, setSelectedPostId] = useState<string>('');
+
+  // Load posts on component mount
+  useEffect(() => {
+    loadPosts();
+  }, []);
+
+  const loadPosts = async () => {
+    try {
+      setLoading(true);
+      const fetchedPosts = await getHomepagePosts();
+      
+      if (fetchedPosts.length === 0 && user?.id) {
+        setPosts([]);
+        return;
+      }
+      
+      setPosts(fetchedPosts);
+      
+      // Load user's liked posts
+      if (user?.id && fetchedPosts.length > 0) {
+        const likedPostsSet = new Set<string>();
+        for (const post of fetchedPosts) {
+          try {
+            const isLiked = await fetchUserLikedState(post.postId, user.id);
+            if (isLiked) {
+              likedPostsSet.add(post.postId);
+            }
+          } catch (error) {
+            console.warn(`Failed to check liked state for post ${post.postId}`);
+          }
+        }
+        setUserLikedPosts(likedPostsSet);
+      }
+    } catch (error) {
+      console.error('Error loading posts:', error);
+      Alert.alert('Error', 'Failed to load posts. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadPosts();
+    setRefreshing(false);
+  };
+
+  const handleLikePress = async (postId: string) => {
+    if (!user?.id) {
+      Alert.alert('Authentication Required', 'Please log in to like posts.');
+      return;
+    }
+
+    try {
+      const isCurrentlyLiked = userLikedPosts.has(postId);
+      
+      if (isCurrentlyLiked) {
+        // Unlike post
+        await unlikePost(postId, user.id);
+        setUserLikedPosts(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(postId);
+          return newSet;
+        });
+        
+        // Update local post stats
+        setPosts(prev => prev.map(post => 
+          post.postId === postId 
+            ? { ...post, likeCount: Math.max(0, post.likeCount - 1) }
+            : post
+        ));
+      } else {
+        // Like post
+        await likePost(postId, user.id);
+        setUserLikedPosts(prev => new Set(prev).add(postId));
+        
+        // Update local post stats
+        setPosts(prev => prev.map(post => 
+          post.postId === postId 
+            ? { ...post, likeCount: post.likeCount + 1 }
+            : post
+        ));
+      }
+      
+    } catch (error) {
+      console.error('Error handling like:', error);
+      
+      // Reset local state and refresh on error
+      await loadPosts();
+      
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('already liked')) {
+        Alert.alert('Already Liked', 'You have already liked this post.');
+      } else if (errorMessage.includes('not liked')) {
+        Alert.alert('Not Liked', 'You have not liked this post yet.');
+      } else {
+        Alert.alert('Error', 'Failed to update like. Please try again.');
+      }
+    }
+  };
+
+  const handleCommentPress = (postId: string) => {
+    if (!user?.id) {
+      Alert.alert('Authentication Required', 'Please log in to view comments.');
+      return;
+    }
+    setSelectedPostId(postId);
+    setCommentsModalVisible(true);
+  };
+
+  const handleSharePress = (postId: string) => {
+    Alert.alert('Share', 'Share feature coming soon!');
+  };
+
+  const handleBookmarkPress = (postId: string) => {
+    Alert.alert('Bookmark', 'Bookmark feature coming soon!');
+  };
+
+  const handleCreateSamplePost = async () => {
+    if (!user?.id) {
+      Alert.alert('Authentication Required', 'Please log in to create posts.');
+      return;
+    }
+
+    Alert.alert(
+      'Post Actions',
+      'Choose an action:',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Create Simple Test Post',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              console.log('Creating simple test post...');
+              
+              // Create a very basic post
+              const postId = await createPost(
+                user.id,
+                null,
+                'This is a test post from Clique! 🎉 Testing the like functionality.',
+                ['https://picsum.photos/400/400?random=1'],
+                'public'
+              );
+              
+              console.log('Created post with ID:', postId);
+              
+              Alert.alert('Success', `Test post created! ID: ${postId.substring(0, 8)}...`);
+              await loadPosts(); // Refresh the feed
+            } catch (error) {
+              console.error('Error creating test post:', error);
+              Alert.alert('Error', 'Failed to create test post. Check console for details.');
+            } finally {
+              setLoading(false);
+            }
+          }
+        },
+        {
+          text: 'Create Multiple Posts',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await initializeSampleData(user.id);
+              Alert.alert('Success', 'Sample posts created!');
+              await loadPosts(); // Refresh the feed
+            } catch (error) {
+              Alert.alert('Error', 'Failed to create posts. Please try again.');
+            } finally {
+              setLoading(false);
+            }
+          }
+        },
+        {
+          text: 'Debug System',
+          onPress: async () => {
+            try {
+              await debugPostSystem(user.id);
+              
+              // Also debug the database state
+              if (posts.length > 0) {
+                console.log('Posts available for debugging:', posts.length);
+              }
+              
+              Alert.alert('Debug Complete', 'Check console for detailed debug information.');
+            } catch (error) {
+              Alert.alert('Error', 'Debug failed. Check console for details.');
+            }
+          }
+        },
+        {
+          text: 'Test Like First Post',
+          onPress: async () => {
+            if (posts.length === 0) {
+              Alert.alert('No Posts', 'Create a post first.');
+              return;
+            }
+            
+            const firstPost = posts[0];
+            console.log('🧪 Testing like functionality on first post:', firstPost.postId);
+            await handleLikePress(firstPost.postId);
+          }
+        }
+      ]
+    );
+  };
+
+  const handleChatPress = () => {
+    navigation.navigate('ChatList');
+  };
+
+  const handleImagePress = (imageUrl: string) => {
+    setSelectedImage(imageUrl);
+    setImageModalVisible(true);
+  };
+
+  const closeImageModal = () => {
+    setImageModalVisible(false);
+    setSelectedImage(null);
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#6366F1" />
+          <Text style={styles.loadingText}>Loading posts...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header with Chat Icon */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Clique</Text>
+        <View style={styles.headerActions}>
+          <TouchableOpacity 
+            style={styles.createPostButton}
+            onPress={handleCreateSamplePost}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="add" size={24} color="#6366F1" />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.chatButton}
+            onPress={handleChatPress}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="chatbubble-outline" size={24} color="#6366F1" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
       <ScrollView 
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        }
       >
-        {/* Instagram-style Feed */}
-        {feedPosts.map((post) => (
-          <View key={post.id} style={styles.postContainer}>
+        {/* Real Firestore Posts Feed */}
+        {posts.map((post) => (
+          <View key={post.postId} style={styles.postContainer}>
             {/* Post Header */}
             <View style={styles.postHeader}>
               <View style={styles.hostInfo}>
-                <Image source={{ uri: post.host.avatar }} style={styles.hostAvatar} />
+                <Image 
+                  source={{ uri: 'https://picsum.photos/100/100?random=21' }} 
+                  style={styles.hostAvatar} 
+                />
                 <View style={styles.hostDetails}>
                   <View style={styles.hostNameContainer}>
-                    <Text style={styles.hostName}>{post.host.name}</Text>
-                    {post.host.isVerified && (
-                      <Ionicons name="checkmark-circle" size={16} color="#6366F1" style={styles.verifiedIcon} />
-                    )}
+                    <Text style={styles.hostName}>User {post.authorId.slice(0, 8)}</Text>
+                    <Ionicons name="checkmark-circle" size={16} color="#6366F1" style={styles.verifiedIcon} />
                   </View>
-                  <Text style={styles.hostUsername}>@{post.host.username}</Text>
+                  <Text style={styles.hostUsername}>@user_{post.authorId.slice(0, 6)}</Text>
                 </View>
               </View>
               <TouchableOpacity style={styles.moreButton}>
@@ -248,125 +333,152 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Collaborative Collage */}
+            {/* Post Media */}
             <View style={styles.collageContainer}>
-              <View style={styles.collageGrid}>
-                {post.collage.photos.slice(0, 4).map((photo, index) => (
-                  <TouchableOpacity 
-                    key={photo.id} 
-                    style={[
-                      styles.collagePhoto,
-                      index === 0 && styles.topLeft,
-                      index === 1 && styles.topRight,
-                      index === 2 && styles.bottomLeft,
-                      index === 3 && styles.bottomRight,
-                    ]}
-                    activeOpacity={0.8}
-                  >
-                    <Image source={{ uri: photo.url }} style={styles.collageImage} />
-                    
-                    {/* Contributor Attribution */}
-                    <View style={styles.contributorOverlay}>
-                      <Image source={{ uri: photo.contributorAvatar }} style={styles.contributorAvatar} />
-                    </View>
-                    
-                    {/* More Photos Indicator (only on last photo if there are more) */}
-                    {index === 3 && post.collage.totalPhotos > 4 && (
-                      <View style={styles.morePhotosOverlay}>
-                        <Text style={styles.morePhotosText}>+{post.collage.totalPhotos - 4}</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </View>
-              
-              {/* Contributors Info */}
-              <View style={styles.contributorsInfo}>
-                <View style={styles.contributorAvatars}>
-                  {post.collage.photos.slice(0, 3).map((photo) => (
-                    <Image 
-                      key={photo.contributorId} 
-                      source={{ uri: photo.contributorAvatar }} 
-                      style={styles.contributorAvatarSmall} 
-                    />
+              {post.mediaUrls.length > 0 ? (
+                <View style={styles.collageGrid}>
+                  {post.mediaUrls.slice(0, 4).map((url, index) => (
+                    <TouchableOpacity 
+                      key={index} 
+                      style={[
+                        styles.collagePhoto,
+                        index === 0 && styles.topLeft,
+                        index === 1 && styles.topRight,
+                        index === 2 && styles.bottomLeft,
+                        index === 3 && styles.bottomRight,
+                      ]}
+                      activeOpacity={0.8}
+                      onPress={() => handleImagePress(url)}
+                    >
+                      <Image source={{ uri: url }} style={styles.collageImage} />
+                      
+                      {/* More Photos Indicator */}
+                      {index === 3 && post.mediaUrls.length > 4 && (
+                        <View style={styles.morePhotosOverlay}>
+                          <Text style={styles.morePhotosText}>+{post.mediaUrls.length - 4}</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
                   ))}
-                  {post.collage.totalContributors > 3 && (
-                    <View style={styles.moreContributors}>
-                      <Text style={styles.moreContributorsText}>+{post.collage.totalContributors - 3}</Text>
-                    </View>
-                  )}
                 </View>
-                <Text style={styles.contributorsText}>
-                  {post.collage.totalContributors} contributors • {post.collage.totalPhotos} photos
-                </Text>
-              </View>
+              ) : (
+                <View style={styles.noMediaContainer}>
+                  <Text style={styles.noMediaText}>📸 No photos shared yet</Text>
+                </View>
+              )}
             </View>
 
             {/* Post Actions */}
             <View style={styles.postActions}>
               <View style={styles.actionButtons}>
-                <TouchableOpacity style={styles.actionButton}>
+                <TouchableOpacity 
+                  style={styles.actionButton}
+                  onPress={() => handleLikePress(post.postId)}
+                >
                   <Ionicons 
-                    name={post.isLiked ? "heart" : "heart-outline"} 
+                    name={userLikedPosts.has(post.postId) ? "heart" : "heart-outline"} 
                     size={24} 
-                    color={post.isLiked ? "#EF4444" : "#111827"} 
+                    color={userLikedPosts.has(post.postId) ? "#EF4444" : "#111827"} 
                   />
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.actionButton}>
+                <TouchableOpacity 
+                  style={styles.actionButton}
+                  onPress={() => handleCommentPress(post.postId)}
+                >
                   <Ionicons name="chatbubble-outline" size={24} color="#111827" />
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.actionButton}>
+                <TouchableOpacity 
+                  style={styles.actionButton}
+                  onPress={() => handleSharePress(post.postId)}
+                >
                   <Ionicons name="paper-plane-outline" size={24} color="#111827" />
                 </TouchableOpacity>
               </View>
-              <TouchableOpacity style={styles.bookmarkButton}>
-                <Ionicons 
-                  name={post.isBookmarked ? "bookmark" : "bookmark-outline"} 
-                  size={24} 
-                  color={post.isBookmarked ? "#111827" : "#111827"} 
-                />
+              <TouchableOpacity 
+                style={styles.bookmarkButton}
+                onPress={() => handleBookmarkPress(post.postId)}
+              >
+                <Ionicons name="bookmark-outline" size={24} color="#111827" />
               </TouchableOpacity>
             </View>
 
             {/* Post Stats */}
             <View style={styles.postStats}>
-              <Text style={styles.likesText}>{post.stats.likes} likes</Text>
+              <Text style={styles.likesText}>{post.likeCount} likes</Text>
+              <Text style={styles.statsText}>
+                {post.commentCount} comments • {post.shareCount} shares
+              </Text>
             </View>
 
-            {/* Event Details */}
+            {/* Post Content */}
             <View style={styles.eventDetails}>
               <Text style={styles.eventTitle}>
-                <Text style={styles.hostNameInline}>@{post.host.username}</Text>
-                {' '}{post.event.title}
+                <Text style={styles.hostNameInline}>@user_{post.authorId.slice(0, 6)}</Text>
+                {' '}{post.text.length > 50 ? `${post.text.slice(0, 50)}...` : post.text}
               </Text>
-              <Text style={styles.eventDescription}>{post.event.description}</Text>
-              
-              <View style={styles.eventMeta}>
-                <View style={styles.eventMetaRow}>
-                  <Ionicons name="calendar-outline" size={16} color="#6B7280" />
-                  <Text style={styles.metaText}>{post.event.date} at {post.event.time}</Text>
-                </View>
-                <View style={styles.eventMetaRow}>
-                  <Ionicons name="location-outline" size={16} color="#6B7280" />
-                  <Text style={styles.metaText}>{post.event.location}</Text>
-                </View>
-                <View style={styles.eventMetaRow}>
-                  <Ionicons name="pricetag-outline" size={16} color="#6B7280" />
-                  <Text style={styles.metaText}>{post.event.price}</Text>
-                </View>
-              </View>
+              {post.text.length > 50 && (
+                <Text style={styles.eventDescription}>{post.text}</Text>
+              )}
             </View>
 
             {/* Comments Preview */}
-            <TouchableOpacity style={styles.commentsSection}>
-              <Text style={styles.viewCommentsText}>View all {post.stats.comments} comments</Text>
-            </TouchableOpacity>
+            {post.commentCount > 0 && (
+              <TouchableOpacity 
+                style={styles.commentsSection}
+                onPress={() => handleCommentPress(post.postId)}
+              >
+                <Text style={styles.viewCommentsText}>View all {post.commentCount} comments</Text>
+              </TouchableOpacity>
+            )}
 
             {/* Time Posted */}
-            <Text style={styles.timePosted}>{post.timePosted}</Text>
+            <Text style={styles.timePosted}>
+              {post.createdAt ? new Date(post.createdAt.toDate()).toLocaleDateString() : 'Recently'}
+            </Text>
           </View>
         ))}
+
+        {posts.length === 0 && (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="camera-outline" size={64} color="#9CA3AF" />
+            <Text style={styles.emptyText}>No posts to show yet</Text>
+            <Text style={styles.emptySubtext}>Start following people or create your first post!</Text>
+          </View>
+        )}
       </ScrollView>
+
+      {/* Image Popup Modal */}
+      {selectedImage && (
+        <Modal
+          visible={imageModalVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={closeImageModal}
+        >
+          <TouchableOpacity 
+            style={styles.imageModalOverlay}
+            activeOpacity={1}
+            onPress={closeImageModal}
+          >
+            <View style={styles.imageModalContainer}>
+              <Image 
+                source={{ uri: selectedImage }}
+                style={styles.expandedImage}
+                resizeMode="contain"
+              />
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
+
+      {/* Comments Modal */}
+      <CommentBottomSheet
+        visible={commentsModalVisible}
+        onClose={() => setCommentsModalVisible(false)}
+        postId={selectedPostId}
+        userId={user?.id || ''}
+        postAuthorId={posts.find(p => p.postId === selectedPostId)?.authorId || ''}
+      />
     </SafeAreaView>
   );
 }
@@ -374,13 +486,86 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#FFFFFF', // White background
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#000000',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  createPostButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+  },
+  chatButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     paddingBottom: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  loadingText: {
+    color: '#000000',
+    fontSize: 16,
+    marginTop: 16,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingTop: 64,
+  },
+  emptyText: {
+    color: '#000000',
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    color: '#9CA3AF',
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  noMediaContainer: {
+    width: width,
+    height: 200,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  noMediaText: {
+    color: '#6B7280',
+    fontSize: 16,
+    fontWeight: '500',
   },
   // Instagram-style post styles
   postContainer: {
@@ -564,6 +749,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#111827',
   },
+  statsText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
   eventDetails: {
     paddingHorizontal: 16,
     paddingTop: 8,
@@ -609,5 +799,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 4,
     paddingBottom: 12,
+  },
+  imageModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalContainer: {
+    width: '90%',
+    height: '70%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  expandedImage: {
+    width: '100%',
+    height: '100%',
   },
 });
