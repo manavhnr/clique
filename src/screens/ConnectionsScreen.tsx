@@ -8,92 +8,248 @@ import {
   SafeAreaView,
   Image,
   TextInput,
+  FlatList,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { 
+  collection, 
+  getDocs, 
+  query, 
+  where, 
+  addDoc, 
+  deleteDoc, 
+  doc,
+  orderBy,
+  serverTimestamp 
+} from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { useAuth } from '../contexts/AuthContext';
+import { DEFAULT_AVATAR } from '../constants/images';
 
-type ConnectionType = 'followers' | 'following';
+type ConnectionType = 'followers' | 'following' | 'suggestions';
 
 interface User {
-  id: string;
+  uid: string;
   name: string;
-  email: string;
-  phone: string;
-  isHost: boolean;
-  profileSetup: boolean;
-  bio?: string;
-  profileImage?: string;
+  username: string;
+  photoURL: string | null;
+  isFollowing: boolean;
 }
+
+
 
 export default function ConnectionsScreen({ route }: { route: any }) {
   const navigation = useNavigation<any>();
   const { user } = useAuth();
-  const initialTab = route?.params?.tab || 'followers';
+  const userId = route?.params?.userId || user?.id;
+  const userName = route?.params?.userName || user?.name;
+  const initialTab = route?.params?.initialTab || 'followers';
   
   const [activeTab, setActiveTab] = useState<ConnectionType>(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [followers, setFollowers] = useState<User[]>([]);
   const [following, setFollowing] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [connectionsCount, setConnectionsCount] = useState(0);
+
+  const isOwnProfile = userId === user?.id;
 
   useEffect(() => {
-    loadConnections();
-  }, []);
+    loadConnectionsData();
+  }, [userId]);
 
-  const loadConnections = async () => {
-    if (!user) return;
+  const loadConnectionsData = async () => {
+    if (!userId) return;
     
-    setLoading(true);
     try {
-      // In a real app, you would have a connections collection
-      // For now, we'll load other users as potential connections
-      const usersRef = collection(db, 'users');
-      const usersSnapshot = await getDocs(usersRef);
-      const allUsers = usersSnapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() } as User))
-        .filter(u => u.id !== user.id); // Exclude current user
-
-      // For demo purposes, split users into followers and following
-      const midpoint = Math.ceil(allUsers.length / 2);
-      setFollowers(allUsers.slice(0, midpoint));
-      setFollowing(allUsers.slice(midpoint));
+      setLoading(true);
+      
+      // Fetch all users except current user
+      const usersQuery = query(
+        collection(db, 'users'),
+        where('uid', '!=', userId)
+      );
+      const usersSnapshot = await getDocs(usersQuery);
+      
+      // Fetch current user's following list
+      const followingQuery = query(
+        collection(db, 'follows'),
+        where('followerId', '==', userId)
+      );
+      const followingSnapshot = await getDocs(followingQuery);
+      const followingIds = new Set(followingSnapshot.docs.map(doc => doc.data().followingId));
+      
+      // Fetch current user's followers list
+      const followersQuery = query(
+        collection(db, 'follows'),
+        where('followingId', '==', userId)
+      );
+      const followersSnapshot = await getDocs(followersQuery);
+      const followerIds = new Set(followersSnapshot.docs.map(doc => doc.data().followerId));
+      
+      // Process users and add follow status
+      const users: User[] = usersSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          uid: data.uid,
+          name: data.name || 'Unknown User',
+          username: data.username || 'unknown',
+          photoURL: data.photoURL || null,
+          isFollowing: followingIds.has(data.uid)
+        };
+      });
+      
+      setAllUsers(users);
+      
+      // Set followers and following lists
+      const followersUsers = users.filter(user => followerIds.has(user.uid));
+      const followingUsers = users.filter(user => followingIds.has(user.uid));
+      
+      setFollowers(followersUsers);
+      setFollowing(followingUsers);
+      setConnectionsCount(followersUsers.length + followingUsers.length);
+      
+      // Debug logging
+      console.log('📊 ConnectionsScreen Debug:');
+      console.log('- Total users found:', users.length);
+      console.log('- Followers:', followersUsers.length);
+      console.log('- Following:', followingUsers.length);
+      console.log('- Suggestions available:', users.filter(u => !u.isFollowing).length);
+      
+      // If no connections, show all users as suggestions
+      if (followersUsers.length === 0 && followingUsers.length === 0) {
+        setActiveTab('suggestions');
+      }
+      
     } catch (error) {
       console.error('Error loading connections:', error);
+      Alert.alert('Error', 'Failed to load connections data');
     } finally {
       setLoading(false);
     }
   };
 
-  const connections = activeTab === 'followers' ? followers : following;
-  
-  const filteredConnections = connections.filter(connection =>
-    connection.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    connection.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (connection.bio && connection.bio.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const getDisplayData = () => {
+    let data: User[] = [];
+    
+    if (connectionsCount === 0 || activeTab === 'suggestions') {
+      // Show all users (excluding already following) as suggestions
+      data = allUsers.filter(user => !user.isFollowing);
+    } else if (activeTab === 'followers') {
+      data = followers;
+    } else if (activeTab === 'following') {
+      data = following;
+    }
 
-  const handlePersonPress = (personId: string) => {
-    // Navigate to person's profile
-    console.log('Navigate to profile:', personId);
+    // Filter by search query
+    if (searchQuery) {
+      data = data.filter(user => 
+        user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.username.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    return data;
   };
 
-  const handleFollowToggle = (personId: string) => {
-    // Toggle follow status
-    console.log('Toggle follow for:', personId);
+  const handleToggleFollow = async (targetUser: User) => {
+    if (!user?.id) return;
+
+    try {
+      if (targetUser.isFollowing) {
+        // Unfollow: delete the follow document
+        const followQuery = query(
+          collection(db, 'follows'),
+          where('followerId', '==', user.id),
+          where('followingId', '==', targetUser.uid)
+        );
+        const followSnapshot = await getDocs(followQuery);
+        
+        if (!followSnapshot.empty) {
+          await deleteDoc(followSnapshot.docs[0].ref);
+          
+          // Update local state immediately
+          setAllUsers(prev => 
+            prev.map(u => u.uid === targetUser.uid ? { ...u, isFollowing: false } : u)
+          );
+          setFollowing(prev => prev.filter(u => u.uid !== targetUser.uid));
+          setConnectionsCount(prev => Math.max(0, prev - 1));
+        }
+      } else {
+        // Follow: create a new follow document
+        await addDoc(collection(db, 'follows'), {
+          followerId: user.id,
+          followingId: targetUser.uid,
+          createdAt: serverTimestamp()
+        });
+        
+        // Update local state immediately
+        setAllUsers(prev => 
+          prev.map(u => u.uid === targetUser.uid ? { ...u, isFollowing: true } : u)
+        );
+        setFollowing(prev => [...prev, { ...targetUser, isFollowing: true }]);
+        setConnectionsCount(prev => prev + 1);
+      }
+    } catch (error) {
+      console.error('Error toggling follow:', error);
+      Alert.alert('Error', 'Failed to update follow status');
+    }
   };
 
-  const handleRemoveFollower = (personId: string) => {
-    // Remove follower
-    console.log('Remove follower:', personId);
+  const handlePersonPress = (userUid: string) => {
+    navigation.navigate('UserProfileView', { 
+      userId: userUid,
+      userName: getDisplayData().find(u => u.uid === userUid)?.name 
+    });
+  };
+
+  const handleRemoveFollower = async (followerUid: string) => {
+    if (!user?.id) return;
+
+    Alert.alert(
+      'Remove Follower',
+      'Are you sure you want to remove this follower?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Find and delete the follow document where follower follows current user
+              const followQuery = query(
+                collection(db, 'follows'),
+                where('followerId', '==', followerUid),
+                where('followingId', '==', user.id)
+              );
+              const followSnapshot = await getDocs(followQuery);
+              
+              if (!followSnapshot.empty) {
+                await deleteDoc(followSnapshot.docs[0].ref);
+                
+                // Update local state
+                setFollowers(prev => prev.filter(f => f.uid !== followerUid));
+                setConnectionsCount(prev => Math.max(0, prev - 1));
+              }
+            } catch (error) {
+              console.error('Error removing follower:', error);
+              Alert.alert('Error', 'Failed to remove follower');
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#6366F1" />
           <Text style={styles.loadingText}>Loading connections...</Text>
         </View>
       </SafeAreaView>
@@ -104,24 +260,48 @@ export default function ConnectionsScreen({ route }: { route: any }) {
     <SafeAreaView style={styles.container}>
       {/* Header with tabs */}
       <View style={styles.header}>
-        <View style={styles.tabContainer}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
+          <Ionicons name="arrow-back" size={24} color="#374151" />
+        </TouchableOpacity>
+        
+        <Text style={styles.headerTitle}>
+          {connectionsCount === 0 ? 'Find Connections' : `${userName || 'User'}\'s Connections`}
+        </Text>
+      </View>
+
+      <View style={styles.tabContainer}>
+        {connectionsCount === 0 ? (
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'followers' && styles.activeTab]}
-            onPress={() => setActiveTab('followers')}
+            style={[styles.tab, styles.activeTab]}
+            onPress={() => setActiveTab('suggestions')}
           >
-            <Text style={[styles.tabText, activeTab === 'followers' && styles.activeTabText]}>
-              {followers.length} Followers
+            <Text style={[styles.tabText, styles.activeTabText]}>
+              Suggested Connections
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'following' && styles.activeTab]}
-            onPress={() => setActiveTab('following')}
-          >
-            <Text style={[styles.tabText, activeTab === 'following' && styles.activeTabText]}>
-              {following.length} Following
-            </Text>
-          </TouchableOpacity>
-        </View>
+        ) : (
+          <>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'followers' && styles.activeTab]}
+              onPress={() => setActiveTab('followers')}
+            >
+              <Text style={[styles.tabText, activeTab === 'followers' && styles.activeTabText]}>
+                {followers.length} Followers
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'following' && styles.activeTab]}
+              onPress={() => setActiveTab('following')}
+            >
+              <Text style={[styles.tabText, activeTab === 'following' && styles.activeTabText]}>
+                {following.length} Following
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
       </View>
 
       {/* Search Bar */}
@@ -140,55 +320,52 @@ export default function ConnectionsScreen({ route }: { route: any }) {
 
       {/* Connections List */}
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {filteredConnections.length === 0 ? (
+        {getDisplayData().length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="people-outline" size={48} color="#D1D5DB" />
             <Text style={styles.emptyStateTitle}>
-              {searchQuery ? 'No matching connections' : `No ${activeTab} yet`}
+              {searchQuery ? 'No matching connections' : 
+                activeTab === 'suggestions' ? 
+                  allUsers.length === 0 ? 'No users found' : 'All users followed' :
+                  `No ${activeTab} yet`}
             </Text>
             <Text style={styles.emptyStateSubtitle}>
               {searchQuery 
                 ? 'Try adjusting your search'
-                : `Discover and connect with other users`
+                : activeTab === 'suggestions'
+                  ? allUsers.length === 0 
+                    ? 'Be the first to join the community!' 
+                    : 'You\'re following everyone available'
+                  : `Discover and connect with other users`
               }
             </Text>
+            {__DEV__ && (
+              <Text style={[styles.emptyStateSubtitle, {marginTop: 10, fontSize: 12, fontFamily: 'monospace'}]}>
+                Debug: {allUsers.length} total users, {allUsers.filter(u => !u.isFollowing).length} available to follow
+              </Text>
+            )}
           </View>
         ) : (
-          filteredConnections.map((connection) => (
+          getDisplayData().map((connection) => (
             <TouchableOpacity
-              key={connection.id}
+              key={connection.uid}
               style={styles.connectionCard}
-              onPress={() => handlePersonPress(connection.id)}
+              onPress={() => handlePersonPress(connection.uid)}
               activeOpacity={0.7}
             >
               <View style={styles.connectionHeader}>
                 <View style={styles.connectionImageContainer}>
                   <Image 
                     source={{ 
-                      uri: connection.profileImage || 'https://picsum.photos/150/150?random=' + connection.id 
+                      uri: connection.photoURL || DEFAULT_AVATAR 
                     }} 
                     style={styles.connectionImage} 
                   />
-                  {connection.isHost && (
-                    <View style={styles.hostBadge}>
-                      <Ionicons name="star" size={10} color="#FFFFFF" />
-                    </View>
-                  )}
                 </View>
 
                 <View style={styles.connectionInfo}>
                   <Text style={styles.connectionName}>{connection.name}</Text>
-                  <Text style={styles.connectionEmail}>{connection.email}</Text>
-                  {connection.bio && (
-                    <Text style={styles.connectionBio} numberOfLines={2}>
-                      {connection.bio}
-                    </Text>
-                  )}
-                  {connection.isHost && (
-                    <View style={styles.hostTag}>
-                      <Text style={styles.hostTagText}>Host</Text>
-                    </View>
-                  )}
+                  <Text style={styles.connectionUsername}>@{connection.username}</Text>
                 </View>
               </View>
 
@@ -197,7 +374,7 @@ export default function ConnectionsScreen({ route }: { route: any }) {
                   <View style={styles.actionButtons}>
                     <TouchableOpacity 
                       style={styles.removeButton}
-                      onPress={() => handleRemoveFollower(connection.id)}
+                      onPress={() => handleRemoveFollower(connection.uid)}
                     >
                       <Text style={styles.removeButtonText}>Remove</Text>
                     </TouchableOpacity>
@@ -205,18 +382,26 @@ export default function ConnectionsScreen({ route }: { route: any }) {
                       <Ionicons name="chatbubble" size={16} color="#6B7280" />
                     </TouchableOpacity>
                   </View>
-                ) : (
+                ) : activeTab === 'following' ? (
                   <View style={styles.actionButtons}>
                     <TouchableOpacity 
-                      style={styles.followButton}
-                      onPress={() => handleFollowToggle(connection.id)}
+                      style={styles.unfollowButton}
+                      onPress={() => handleToggleFollow(connection)}
                     >
-                      <Text style={styles.followButtonText}>Following</Text>
+                      <Text style={styles.unfollowButtonText}>Unfollow</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.messageButton}>
                       <Ionicons name="chatbubble" size={16} color="#6B7280" />
                     </TouchableOpacity>
                   </View>
+                ) : (
+                  // Suggestions tab - show follow button for non-followed users
+                  <TouchableOpacity 
+                    style={styles.followButton}
+                    onPress={() => handleToggleFollow(connection)}
+                  >
+                    <Text style={styles.followButtonText}>Follow</Text>
+                  </TouchableOpacity>
                 )}
               </View>
             </TouchableOpacity>
@@ -242,9 +427,21 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 16,
+  },
+  backButton: {
+    marginRight: 16,
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    flex: 1,
   },
   tabContainer: {
     flexDirection: 'row',
@@ -343,8 +540,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#111827',
     marginBottom: 2,
-  },
-  connectionEmail: {
+  },  connectionUsername: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 4,
+  },  connectionEmail: {
     fontSize: 14,
     color: '#6B7280',
     marginBottom: 4,
@@ -387,8 +587,18 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '600',
+  },  unfollowButton: {
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 8,
   },
-  removeButton: {
+  unfollowButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },  removeButton: {
     backgroundColor: '#EF4444',
     paddingHorizontal: 16,
     paddingVertical: 8,

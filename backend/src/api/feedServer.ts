@@ -6,6 +6,7 @@
 import express from 'express';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import connectionsRoutes from '../routes/connections.routes';
 import { 
   FeedRequest, 
   PersonalizedFeedResponse, 
@@ -42,6 +43,9 @@ const app = express();
 
 // Middleware
 app.use(express.json());
+
+// Register routes
+app.use('/api/users', connectionsRoutes);
 
 // CORS middleware
 app.use((req: any, res: any, next: any) => {
@@ -144,7 +148,11 @@ app.get('/api/feed/health', (req: any, res: any) => {
   res.json({ 
     status: 'healthy', 
     timestamp: new Date().toISOString(),
-    version: '1.0.0'
+    version: '1.0.0',
+    services: {
+      firebase: 'connected',
+      firestore: 'connected'
+    }
   });
 });
 
@@ -220,7 +228,7 @@ async function getPostsFromFollowedUsers(user: UserDocument, limit: number): Pro
         .limit(Math.ceil(limit / chunks.length));
 
       const snapshot = await query.get();
-      snapshot.forEach(doc => {
+      snapshot.forEach((doc: any) => {
         const data = doc.data() as PostDocument;
         posts.push({
           ...data,
@@ -252,7 +260,7 @@ async function getTopicBasedPosts(user: UserDocument, limit: number): Promise<Fe
     const snapshot = await query.get();
     let count = 0;
 
-    snapshot.forEach(doc => {
+    snapshot.forEach((doc: any) => {
       if (count >= limit) return;
       
       const data = doc.data() as PostDocument;
@@ -288,7 +296,7 @@ async function getLocationBasedPosts(user: UserDocument, limit: number): Promise
     const posts: FeedPost[] = [];
     let count = 0;
 
-    snapshot.forEach(doc => {
+    snapshot.forEach((doc: any) => {
       if (count >= limit) return;
       
       const data = doc.data() as PostDocument;
@@ -364,7 +372,7 @@ async function enrichPostsWithOwnerInfo(posts: FeedPost[]): Promise<void> {
       batch.map(id => db.collection('users').doc(id).get())
     );
 
-    userDocs.forEach((doc, index) => {
+    userDocs.forEach((doc: any, index: number) => {
       if (doc.exists) {
         const userData = doc.data();
         ownerData.set(batch[index], {

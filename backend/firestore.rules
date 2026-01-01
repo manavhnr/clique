@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Follow relationships collection
+    match /follows/{followId} {
+      // Only authenticated users can access follow data
+      allow read: if request.auth != null;
+      
+      // Users can only create follow documents where they are the follower
+      allow create: if request.auth != null 
+        && request.auth.uid == resource.data.followerId
+        && validateFollowDocument(request.resource.data);
+      
+      // Users can only delete follow documents where they are the follower
+      allow delete: if request.auth != null 
+        && request.auth.uid == resource.data.followerId;
+      
+      // Prevent updates to follow documents (immutable after creation)
+      allow update: if false;
+    }
+    
+    // Users collection - for profile data and connection counts
+    match /users/{userId} {
+      // Allow authenticated users to read user profiles for connection counts
+      allow read: if request.auth != null;
+      
+      // Users can only update their own profile
+      allow write: if request.auth != null 
+        && request.auth.uid == userId;
+    }
+    
+    // Posts collection - for user post data
+    match /posts/{postId} {
+      // Allow authenticated users to read posts
+      allow read: if request.auth != null;
+      
+      // Users can only create/update their own posts
+      allow create, update: if request.auth != null 
+        && request.auth.uid == resource.data.ownerId;
+      
+      // Users can only delete their own posts
+      allow delete: if request.auth != null 
+        && request.auth.uid == resource.data.ownerId;
+    }
+    
+    // Helper functions for validation
+    function validateFollowDocument(data) {
+      return data.keys().hasAll(['followerId', 'followingId', 'createdAt', 'status'])
+        && data.followerId is string
+        && data.followingId is string
+        && data.createdAt is timestamp
+        && data.status == 'active'
+        && data.followerId != data.followingId; // Prevent self-following
+    }
+    
+    // Additional validation function for user data
+    function validateUserData(data) {
+      return data.keys().hasAny(['displayName', 'email', 'avatar', 'username', 'location', 'interests'])
+        && (data.get('displayName', '') is string)
+        && (data.get('email', '') is string)
+        && (data.get('username', '') is string);
+    }
+  }
+}

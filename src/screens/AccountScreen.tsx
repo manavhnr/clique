@@ -21,6 +21,8 @@ import type { Post } from '../services/postService';
 import { getHomepagePosts } from '../services/postService';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { DEFAULT_AVATAR } from '../constants/images';
+import { API_CONFIG } from '../constants/api';
+import { connectionsService } from '../services/connectionsService';
 
 const { width } = Dimensions.get('window');
 const postSize = (width - 60) / 3;
@@ -41,6 +43,12 @@ export default function AccountScreen() {
   const [startingConversation, setStartingConversation] = useState(false);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
+  const [connectionsData, setConnectionsData] = useState<{
+    followers: number;
+    following: number;
+    connections: number;
+  } | null>(null);
+  const [loadingConnections, setLoadingConnections] = useState(true);
   
   const params = route.params as AccountScreenParams | undefined;
   const isOwnProfile = !params?.userId || params.userId === user?.id;
@@ -59,8 +67,8 @@ export default function AccountScreen() {
   const eventsHosted = displayUser?.isHost ? Math.floor(Math.random() * 20) + 5 : 0;
   const totalAttendees = displayUser?.isHost ? Math.floor(Math.random() * 500) + 100 : 0;
   const hostRating = displayUser?.isHost ? (4.2 + Math.random() * 0.6) : 0;
-  const followersCount = Math.floor(Math.random() * 1000) + 50;
-  const followingCount = Math.floor(Math.random() * 500) + 20;
+  const followersCount = connectionsData?.followers ?? 0;
+  const followingCount = connectionsData?.following ?? 0;
   
   // Fetch user's posts on mount
   useEffect(() => {
@@ -83,11 +91,39 @@ export default function AccountScreen() {
     loadUserPosts();
   }, [user?.id, profileUserId, isViewingOwnProfile]);
   
+  // Fetch connections data
+  useEffect(() => {
+    const fetchConnectionsData = async () => {
+      if (!profileUserId) return;
+      
+      try {
+        setLoadingConnections(true);
+        const data = await connectionsService.getConnectionsCount(profileUserId);
+        setConnectionsData(data);
+      } catch (error) {
+        // Service handles fallbacks gracefully, so this should rarely happen
+        console.warn('Connections service failed unexpectedly, using default values');
+        setConnectionsData({ followers: 0, following: 0, connections: 0 });
+      } finally {
+        setLoadingConnections(false);
+      }
+    };
+    
+    fetchConnectionsData();
+  }, [profileUserId]);
+  
   // Stats visibility logic
   const statsToShow = [];
   if (isViewingOwnProfile) {
     if (postsCount > 0) statsToShow.push({ key: 'cliques', value: postsCount, label: 'Cliques', icon: 'images-outline' });
-    if (followersCount + followingCount > 0) statsToShow.push({ key: 'connections', value: followersCount + followingCount, label: 'Connections', icon: 'people-outline' });
+    
+    // Always show connections count from API data or loading state
+    if (loadingConnections) {
+      statsToShow.push({ key: 'connections', value: '...', label: 'Connections', icon: 'people-outline' });
+    } else if (connectionsData !== null) {
+      statsToShow.push({ key: 'connections', value: connectionsData.connections, label: 'Connections', icon: 'people-outline' });
+    }
+    
     if (eventsHosted > 0) statsToShow.push({ key: 'events', value: eventsHosted, label: 'Events', icon: 'calendar-outline' });
   } else {
     if (eventsHosted > 0) statsToShow.push({ key: 'hosted', value: eventsHosted, label: 'Events Hosted', icon: 'calendar-outline' });
@@ -135,6 +171,18 @@ export default function AccountScreen() {
 
   const handleChatPress = () => {
     navigation.navigate('ChatList');
+  };
+
+  const handleStatPress = (statKey: string) => {
+    if (statKey === 'connections' && profileUserId) {
+      const initialTab = connectionsData && connectionsData.connections === 0 ? 'suggestions' : 'followers';
+      navigation.navigate('Connections', {
+        userId: profileUserId,
+        userName: displayName,
+        initialTab,
+      });
+    }
+    // Add other stat navigation logic here if needed
   };
 
   const renderEventCards = () => {
@@ -317,7 +365,12 @@ export default function AccountScreen() {
           {statsToShow.length > 0 && (
             <View style={styles.statsRow}>
               {statsToShow.map((stat) => (
-                <TouchableOpacity key={stat.key} style={styles.statCard}>
+                <TouchableOpacity 
+                  key={stat.key} 
+                  style={styles.statCard}
+                  onPress={() => handleStatPress(stat.key)}
+                  activeOpacity={stat.key === 'connections' ? 0.7 : 1}
+                >
                   <Ionicons name={stat.icon as any} size={16} color="#6366F1" style={styles.statIcon} />
                   <Text style={styles.statNumber}>{stat.value}</Text>
                   <Text style={styles.statLabel}>{stat.label}</Text>

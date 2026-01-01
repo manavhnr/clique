@@ -39,7 +39,11 @@ export type RootStackParamList = {
   Booking: { eventId: string };
   Settings: undefined;
   EditProfile: undefined;
-  Connections: { tab?: 'followers' | 'following' };
+  Connections: { 
+    userId: string;
+    userName?: string;
+    initialTab?: 'followers' | 'following' | 'suggestions';
+  };
   HostApplication: undefined;
   HostDashboard: undefined;
   CreateEvent: { eventId?: string; mode?: 'create' | 'edit' };
